@@ -1,0 +1,15 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+section {
+  scroll-margin-top: 4rem;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 0;
+  }
+}
