@@ -5,7 +5,8 @@ export default function ActivityLog() {
   const [logs, setLogs] = useState([])
 
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_API_BASE || 'http://localhost:4000', {
+    const socket = io(import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || 'http://localhost:4000', {
+
       transports: ['websocket'],
     })
 
