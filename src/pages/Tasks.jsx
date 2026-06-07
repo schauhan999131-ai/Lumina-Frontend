@@ -341,7 +341,7 @@ export default function Tasks() {
                   onChange={(e) => setCategory(e.target.value)}
                   className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-purple-500 transition"
                 >
-                  <option value="Daily">Daily Planning</option>
+                  <option value="Daily">Today Planning</option>
                   <option value="Weekly">Weekly Planning</option>
                   <option value="Yearly">Yearly Planning</option>
                 </select>

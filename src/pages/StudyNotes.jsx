@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useAppStore } from '../store'
 
 const initialNotes = [
@@ -62,9 +62,114 @@ const noteTemplates = {
 [protein: 24 | cal: 120 | food: Whey Protein Shake]`,
 }
 
+// Starter Vocabulary Pack
+const initialVocabulary = [
+  {
+    id: 1,
+    word: 'Mitigate',
+    category: 'Coding Term',
+    partOfSpeech: 'Verb',
+    difficulty: 'Medium',
+    definition: 'Make less severe, serious, or painful; lessen the gravity of an offense or mistake.',
+    example: 'We must identify the security risks and take actions to mitigate them.',
+    codeContext: 'We mitigated the database bottleneck by adding a Redis caching layer and indexing search keys.',
+    mnemonic: 'Mitigate sounds like "gate" - closing a gate to stop a flood of incoming water or problems.',
+    status: 'learning'
+  },
+  {
+    id: 2,
+    word: 'Caveat',
+    category: 'General English',
+    partOfSpeech: 'Noun',
+    difficulty: 'Medium',
+    definition: 'A warning or proviso of specific stipulations, conditions, or limitations.',
+    example: 'He gave his recommendation with the caveat that it was based on incomplete data.',
+    codeContext: 'This utility function simplifies third-party API integration, with the caveat that it does not auto-retry on server errors.',
+    mnemonic: 'Caveat sounds like "cave at" - watch out, the cave ceiling might cave in if you go in unprepared!',
+    status: 'learning'
+  },
+  {
+    id: 3,
+    word: 'Idempotent',
+    category: 'Coding Term',
+    partOfSpeech: 'Adjective',
+    difficulty: 'Hard',
+    definition: 'An operation or API call that produces the same result no matter how many times it is run.',
+    example: 'The setting modification operation was idempotent, ensuring no duplicate states were created.',
+    codeContext: 'To prevent duplicate transactions, we made our payment endpoint idempotent by validating a unique request key.',
+    mnemonic: 'Idem (Latin for same) + Potent (power/effect) = Same effect every time.',
+    status: 'learning'
+  },
+  {
+    id: 4,
+    word: 'Leverage',
+    category: 'Business Idiom',
+    partOfSpeech: 'Verb',
+    difficulty: 'Easy',
+    definition: 'Use something to maximum advantage; gain an advantage or leverage.',
+    example: 'The firm will leverage its global network to expand sales.',
+    codeContext: 'We can leverage React hooks to decouple component rendering from state management.',
+    mnemonic: 'Using a lever to lift a heavy object easily - leveraging makes hard work simple.',
+    status: 'learning'
+  },
+  {
+    id: 5,
+    word: 'Decouple',
+    category: 'Coding Term',
+    partOfSpeech: 'Verb',
+    difficulty: 'Medium',
+    definition: 'Separate, disengage, or dissociate (something from something else).',
+    example: 'Decoupling our billing logic from the main application container simplifies unit testing.',
+    codeContext: 'We decoupled the Frontend from the Backend using a clean API layer, allowing us to deploy each service independently.',
+    mnemonic: 'Uncoupling train cars so they can move on different tracks independently.',
+    status: 'learning'
+  },
+  {
+    id: 6,
+    word: 'Obfuscate',
+    category: 'Coding Term',
+    partOfSpeech: 'Verb',
+    difficulty: 'Hard',
+    definition: 'Render obscure, unclear, or unintelligible; make code difficult for humans to understand.',
+    example: 'The writer tried to obfuscate the truth with overly complex language.',
+    codeContext: 'Webpack is configured to minify and obfuscate our production bundle to protect proprietary algorithms.',
+    mnemonic: 'Ob-fuse-cate - making code look like a bunch of blown fuses and confusing paths.',
+    status: 'learning'
+  },
+  {
+    id: 7,
+    word: 'Transient',
+    category: 'Coding Term',
+    partOfSpeech: 'Adjective',
+    difficulty: 'Medium',
+    definition: 'Lasting only for a short time; impermanent.',
+    example: 'A glass of cold water provided transient relief from the summer heat.',
+    codeContext: 'We need to retry database connections on transient network errors, rather than failing immediately.',
+    mnemonic: 'Transit - passing through quickly, like passengers in a transit terminal.',
+    status: 'learning'
+  },
+  {
+    id: 8,
+    word: 'Bespoke',
+    category: 'Business Idiom',
+    partOfSpeech: 'Adjective',
+    difficulty: 'Easy',
+    definition: 'Made to order; custom-made; tailored to a specific client or task.',
+    example: 'They hired a boutique design studio to create a bespoke branding system.',
+    codeContext: 'We built a bespoke authentication provider to support the client\'s legacy LDAP directories.',
+    mnemonic: 'Bespoke = "Been spoken for" - it was made specifically for a specific customer.',
+    status: 'learning'
+  }
+]
+
 export default function StudyNotes() {
   const parseNoteWealth = useAppStore((state) => state.parseNoteWealth)
   const parseNoteHealth = useAppStore((state) => state.parseNoteHealth)
+
+  // Active Tab: 'notes' (default) or 'vocab'
+  const [activeTab, setActiveTab] = useState('notes')
+
+  // --- KNOWLEDGE NOTES STATE ---
   const [notes, setNotes] = useState(() => {
     const saved = localStorage.getItem('lumina_notes')
     return saved ? JSON.parse(saved) : initialNotes
@@ -75,19 +180,49 @@ export default function StudyNotes() {
   const [selectedSubject, setSelectedSubject] = useState('All')
   const [message, setMessage] = useState(null)
 
+  // --- VOCAB & PHRASE HUB STATE ---
+  const [vocabList, setVocabList] = useState(() => {
+    const saved = localStorage.getItem('lumina_vocab')
+    return saved ? JSON.parse(saved) : initialVocabulary
+  })
+  const [vocabWord, setVocabWord] = useState('')
+  const [vocabCategory, setVocabCategory] = useState('Coding Term')
+  const [vocabPartOfSpeech, setVocabPartOfSpeech] = useState('Noun')
+  const [vocabDifficulty, setVocabDifficulty] = useState('Medium')
+  const [vocabDefinition, setVocabDefinition] = useState('')
+  const [vocabExample, setVocabExample] = useState('')
+  const [vocabCodeContext, setVocabCodeContext] = useState('')
+  const [vocabMnemonic, setVocabMnemonic] = useState('')
+  const [vocabSearch, setVocabSearch] = useState('')
+  const [vocabFilterCategory, setVocabFilterCategory] = useState('All')
+  const [vocabFilterDifficulty, setVocabFilterDifficulty] = useState('All')
+  const [vocabFilterStatus, setVocabFilterStatus] = useState('All')
+  const [vocabMessage, setVocabMessage] = useState(null)
+
+  // Flashcards state
+  const [activeCardIndex, setActiveCardIndex] = useState(0)
+  const [isCardFlipped, setIsCardFlipped] = useState(false)
+  
+  // Expanded word card IDs
+  const [expandedCardIds, setExpandedCardIds] = useState([])
+
+  // Edit Word State
+  const [editingWordId, setEditingWordId] = useState(null)
+  const [editFields, setEditFields] = useState({})
+
   // Dynamically compute subjects from current notes
   const uniqueSubjects = useMemo(() => {
     const subs = new Set()
     notes.forEach((n) => {
       if (n.subject) subs.add(n.subject)
     })
-    // Seed with common defaults if list is short
     subjectSuggestions.forEach(s => {
       if (subs.size < 8) subs.add(s)
     })
     return Array.from(subs)
   }, [notes])
 
+  // --- KNOWLEDGE NOTES FUNCTIONS ---
   const handleCreateNote = (e) => {
     e.preventDefault()
     if (!title.trim() || !content.trim()) {
@@ -106,10 +241,7 @@ export default function StudyNotes() {
     setNotes(updatedNotes)
     localStorage.setItem('lumina_notes', JSON.stringify(updatedNotes))
     
-    // Auto-parse note transactions to Wealth Ledger
     parseNoteWealth(note.id, note.content).catch((err) => console.error(err))
-
-    // Auto-parse note transactions to Health Ledger
     parseNoteHealth(note.id, note.content).catch((err) => console.error(err))
 
     setTitle('')
@@ -123,17 +255,13 @@ export default function StudyNotes() {
     setNotes(updatedNotes)
     localStorage.setItem('lumina_notes', JSON.stringify(updatedNotes))
     
-    // Clear ledger entries parsed from this note
     parseNoteWealth(id, '').catch((err) => console.error(err))
-
-    // Clear health entries parsed from this note
     parseNoteHealth(id, '').catch((err) => console.error(err))
 
     setMessage('Note deleted.')
     setTimeout(() => setMessage(null), 3000)
   }
 
-  // Load a planning template directly into the textarea
   const handleLoadTemplate = (type) => {
     if (type === 'website') {
       setContent(noteTemplates.websitePlan)
@@ -152,164 +280,1014 @@ export default function StudyNotes() {
     (n) => selectedSubject === 'All' || n.subject === selectedSubject,
   )
 
+  // --- VOCAB & PHRASE HUB FUNCTIONS ---
+  const handleSaveVocabList = (updated) => {
+    setVocabList(updated)
+    localStorage.setItem('lumina_vocab', JSON.stringify(updated))
+  }
+
+  const handleCreateVocab = (e) => {
+    e.preventDefault()
+    if (!vocabWord.trim() || !vocabDefinition.trim()) {
+      setVocabMessage('Please enter the word/phrase and its definition.')
+      return
+    }
+
+    const newItem = {
+      id: Date.now(),
+      word: vocabWord.trim(),
+      category: vocabCategory,
+      partOfSpeech: vocabPartOfSpeech,
+      difficulty: vocabDifficulty,
+      definition: vocabDefinition.trim(),
+      example: vocabExample.trim(),
+      codeContext: vocabCodeContext.trim(),
+      mnemonic: vocabMnemonic.trim(),
+      status: 'learning'
+    }
+
+    const updated = [newItem, ...vocabList]
+    handleSaveVocabList(updated)
+
+    // Reset Form
+    setVocabWord('')
+    setVocabDefinition('')
+    setVocabExample('')
+    setVocabCodeContext('')
+    setVocabMnemonic('')
+    setVocabMessage('Word added to vault!')
+    setTimeout(() => setVocabMessage(null), 3000)
+  }
+
+  const handleDeleteVocab = (id) => {
+    const updated = vocabList.filter(v => v.id !== id)
+    handleSaveVocabList(updated)
+    setVocabMessage('Word deleted.')
+    setTimeout(() => setVocabMessage(null), 3000)
+
+    // Adjust flashcard index if out of bounds
+    if (activeCardIndex >= learningWords.length - 1 && activeCardIndex > 0) {
+      setActiveCardIndex(prev => Math.max(0, prev - 1))
+      setIsCardFlipped(false)
+    }
+  }
+
+  const toggleVocabStatus = (id) => {
+    const updated = vocabList.map(v => {
+      if (v.id === id) {
+        return { ...v, status: v.status === 'learning' ? 'mastered' : 'learning' }
+      }
+      return v
+    })
+    handleSaveVocabList(updated)
+  }
+
+  const importDeveloperPack = () => {
+    // Merge pack without duplicates
+    const existingWords = new Set(vocabList.map(v => v.word.toLowerCase()))
+    const newItems = initialVocabulary.filter(item => !existingWords.has(item.word.toLowerCase()))
+
+    if (newItems.length === 0) {
+      setVocabMessage('Developer Pack is already imported!')
+      setTimeout(() => setVocabMessage(null), 3000)
+      return
+    }
+
+    // Add unique ones
+    const updated = [...vocabList, ...newItems.map(item => ({ ...item, id: Date.now() + Math.random() }))]
+    handleSaveVocabList(updated)
+    setVocabMessage(`Successfully imported ${newItems.length} developer vocabulary words!`)
+    setTimeout(() => setVocabMessage(null), 3000)
+  }
+
+  const resetAllMastered = () => {
+    const updated = vocabList.map(v => ({ ...v, status: 'learning' }))
+    handleSaveVocabList(updated)
+    setActiveCardIndex(0)
+    setIsCardFlipped(false)
+    setVocabMessage('Reset all words to Learning mode.')
+    setTimeout(() => setVocabMessage(null), 3000)
+  }
+
+  // Flashcards filtered list (only words in 'learning' status)
+  const learningWords = useMemo(() => {
+    return vocabList.filter(v => v.status === 'learning')
+  }, [vocabList])
+
+  const handleFlashcardReview = (mastered) => {
+    if (learningWords.length === 0) return
+
+    const currentWord = learningWords[activeCardIndex]
+    if (mastered) {
+      toggleVocabStatus(currentWord.id)
+    }
+
+    setIsCardFlipped(false)
+    
+    // Smooth transition delay to next card
+    setTimeout(() => {
+      if (activeCardIndex >= learningWords.length - 1 || mastered) {
+        // If we mastered the word, the list shrinks, so index handles itself or wraps
+        setActiveCardIndex(0)
+      } else {
+        setActiveCardIndex(prev => prev + 1)
+      }
+    }, 250)
+  }
+
+  // Expanded card toggle
+  const toggleExpandCard = (id) => {
+    if (expandedCardIds.includes(id)) {
+      setExpandedCardIds(expandedCardIds.filter(cid => cid !== id))
+    } else {
+      setExpandedCardIds([...expandedCardIds, id])
+    }
+  }
+
+  // Edit Mode functions
+  const startEditing = (word) => {
+    setEditingWordId(word.id)
+    setEditFields({ ...word })
+  }
+
+  const saveEditing = () => {
+    const updated = vocabList.map(v => {
+      if (v.id === editingWordId) {
+        return { ...editFields }
+      }
+      return v
+    })
+    handleSaveVocabList(updated)
+    setEditingWordId(null)
+    setVocabMessage('Word details updated.')
+    setTimeout(() => setVocabMessage(null), 3000)
+  }
+
+  // Filters and search for the Dictionary List
+  const filteredVocab = useMemo(() => {
+    return vocabList.filter(v => {
+      const matchesSearch = v.word.toLowerCase().includes(vocabSearch.toLowerCase()) ||
+                            v.definition.toLowerCase().includes(vocabSearch.toLowerCase()) ||
+                            (v.codeContext && v.codeContext.toLowerCase().includes(vocabSearch.toLowerCase()))
+      
+      const matchesCategory = vocabFilterCategory === 'All' || v.category === vocabFilterCategory
+      const matchesDifficulty = vocabFilterDifficulty === 'All' || v.difficulty === vocabFilterDifficulty
+      const matchesStatus = vocabFilterStatus === 'All' || v.status === vocabFilterStatus
+
+      return matchesSearch && matchesCategory && matchesDifficulty && matchesStatus
+    })
+  }, [vocabList, vocabSearch, vocabFilterCategory, vocabFilterDifficulty, vocabFilterStatus])
+
   return (
     <div className="space-y-6 text-slate-200">
-      {/* Header Banner */}
-      <div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg shadow-slate-950/20">
-        <h2 className="text-lg font-semibold text-slate-100">Knowledge Vault</h2>
-        <p className="mt-2 text-sm text-slate-400">
-          Write documentation, log design guides, and compile concepts for future reference.
-        </p>
+      {/* Header Banner with Custom Tab Toggles */}
+      <div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg shadow-slate-950/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+            <span>📚</span>
+            <span>Knowledge Vault</span>
+          </h2>
+          <p className="mt-1 text-xs text-slate-400">
+            {activeTab === 'notes' 
+              ? 'Write documentation, log design guides, and compile concepts for future reference.' 
+              : 'Add specialized coding phrases & English vocabulary. Review them via flashcards to memorize easily.'
+            }
+          </p>
+        </div>
+
+        {/* Tab Controls */}
+        <div className="flex bg-slate-900 border border-slate-800 p-1.5 rounded-2xl self-start md:self-auto select-none">
+          <button
+            type="button"
+            onClick={() => setActiveTab('notes')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition duration-150 ${
+              activeTab === 'notes'
+                ? 'bg-purple-600/20 border border-purple-500/35 text-purple-300 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <span>📝</span> Notes Vault
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('vocab')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition duration-150 ${
+              activeTab === 'vocab'
+                ? 'bg-purple-600/20 border border-purple-500/35 text-purple-300 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <span>🗣️</span> Vocab & Phrase Hub
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
-        {/* Creator block */}
-        <section className="space-y-6 rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg self-start">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-900 pb-3">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Create Knowledge Note</h3>
-            
-            {/* Template Selector Controls */}
-            <div className="flex gap-1.5 select-none">
-              <button
-                type="button"
-                onClick={() => handleLoadTemplate('website')}
-                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-[9px] font-bold text-slate-300 hover:text-purple-300 transition"
-                title="Load sitemap / database setup template"
-              >
-                🌐 Web Plan
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLoadTemplate('business')}
-                className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-[9px] font-bold text-slate-300 hover:text-purple-300 transition"
-                title="Load pricing / strategy template"
-              >
-                💼 Business Plan
-              </button>
+      {/* RENDER ACTIVE TAB */}
+      {activeTab === 'notes' ? (
+        // --- NOTE VAULT VIEW (ORIGINAL CONTENT) ---
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
+          {/* Creator block */}
+          <section className="space-y-6 rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg self-start">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-900 pb-3">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Create Knowledge Note</h3>
+              
+              {/* Template Selector Controls */}
+              <div className="flex gap-1.5 select-none">
+                <button
+                  type="button"
+                  onClick={() => handleLoadTemplate('website')}
+                  className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-[9px] font-bold text-slate-300 hover:text-purple-300 transition"
+                  title="Load sitemap / database setup template"
+                >
+                  🌐 Web Plan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleLoadTemplate('business')}
+                  className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-[9px] font-bold text-slate-300 hover:text-purple-300 transition"
+                  title="Load pricing / strategy template"
+                >
+                  💼 Business Plan
+                </button>
+              </div>
             </div>
-          </div>
 
-          <form onSubmit={handleCreateNote} className="space-y-4">
-            <label className="block text-sm text-slate-300">
-              Note Title
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                placeholder="e.g. Microservices Architecture Design"
-              />
-            </label>
+            <form onSubmit={handleCreateNote} className="space-y-4">
+              <label className="block text-sm text-slate-300 font-semibold">
+                Note Title
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  placeholder="e.g. Microservices Architecture Design"
+                />
+              </label>
 
-            <label className="block text-sm text-slate-300">
-              Topic / Category Area
-              <input
-                list="note-subject-suggestions"
-                required
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                placeholder="Select or type a topic (e.g. System Design)"
-              />
-              <datalist id="note-subject-suggestions">
-                {subjectSuggestions.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-            </label>
+              <label className="block text-sm text-slate-300 font-semibold">
+                Topic / Category Area
+                <input
+                  list="note-subject-suggestions"
+                  required
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  placeholder="Select or type a topic (e.g. System Design)"
+                />
+                <datalist id="note-subject-suggestions">
+                  {subjectSuggestions.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+              </label>
 
-            <label className="block text-sm text-slate-300">
-              Note Contents (Markdown compatible)
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={12}
-                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono"
-                placeholder="e.g. Define API gateway middleware routing controls..."
-              />
-            </label>
+              <label className="block text-sm text-slate-300 font-semibold">
+                Note Contents (Markdown compatible)
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  rows={12}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono"
+                  placeholder="e.g. Define API gateway middleware routing controls..."
+                />
+              </label>
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => handleLoadTemplate('clear')}
-                className="rounded-2xl border border-slate-705 bg-slate-950 hover:bg-slate-900 px-4 py-3 text-sm font-semibold transition"
-              >
-                Clear
-              </button>
-              <button
-                type="submit"
-                className="flex-1 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:from-purple-600 hover:to-indigo-700 shadow-lg shadow-purple-500/15"
-              >
-                Save Note
-              </button>
-            </div>
-          </form>
-        </section>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleLoadTemplate('clear')}
+                  className="rounded-2xl border border-slate-800 bg-slate-950 hover:bg-slate-900 px-4 py-3 text-sm font-semibold transition"
+                >
+                  Clear
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:from-purple-600 hover:to-indigo-700 shadow-lg shadow-purple-500/15"
+                >
+                  Save Note
+                </button>
+              </div>
+            </form>
+          </section>
 
-        {/* Saved List block */}
-        <section className="space-y-6">
-          {/* Subject filters */}
-          <div className="flex flex-wrap gap-2">
-            {['All', ...uniqueSubjects].map((sub) => (
-              <button
-                key={sub}
-                type="button"
-                onClick={() => setSelectedSubject(sub)}
-                className={`rounded-full px-4 py-1.5 text-xs font-semibold border transition ${
-                  selectedSubject === sub
-                    ? 'bg-purple-600 border-purple-500 text-white'
-                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                }`}
-              >
-                {sub}
-              </button>
-            ))}
-          </div>
-
-          {message && (
-            <div className="rounded-2xl border border-purple-500/20 bg-purple-950/30 p-4 text-sm text-purple-200">
-              {message}
-            </div>
-          )}
-
-          {filteredNotes.length === 0 ? (
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-8 text-center text-slate-500">
-              No notes found for this subject area.
-            </div>
-          ) : (
-            <div className="space-y-4 max-h-[640px] overflow-y-auto pr-1">
-              {filteredNotes.map((note) => (
-                <div key={note.id} className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6 shadow-md hover:border-purple-500/15 transition relative group">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
-                      {note.subject}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteNote(note.id)}
-                      className="opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-300 transition hover:bg-rose-500/20"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  <h4 className="text-base font-bold text-slate-100 mb-2">{note.title}</h4>
-                  <div className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed font-sans prose prose-invert max-w-none">
-                    {note.content.split('\n').map((line, i) => {
-                      if (line.startsWith('###')) {
-                        return <h4 key={i} className="text-sm font-bold text-slate-100 mt-4 mb-2">{line.replace('###', '').trim()}</h4>
-                      }
-                      if (line.startsWith('-')) {
-                        return <li key={i} className="ml-4 list-disc text-slate-350">{line.replace('-', '').trim()}</li>
-                      }
-                      return <p key={i} className="my-1.5">{line}</p>
-                    })}
-                  </div>
-                </div>
+          {/* Saved List block */}
+          <section className="space-y-6">
+            {/* Subject filters */}
+            <div className="flex flex-wrap gap-2">
+              {['All', ...uniqueSubjects].map((sub) => (
+                <button
+                  key={sub}
+                  type="button"
+                  onClick={() => setSelectedSubject(sub)}
+                  className={`rounded-full px-4 py-1.5 text-xs font-semibold border transition ${
+                    selectedSubject === sub
+                      ? 'bg-purple-600 border-purple-500 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                  }`}
+                >
+                  {sub}
+                </button>
               ))}
             </div>
-          )}
-        </section>
-      </div>
+
+            {message && (
+              <div className="rounded-2xl border border-purple-500/20 bg-purple-950/30 p-4 text-sm text-purple-200 animate-fade-in">
+                {message}
+              </div>
+            )}
+
+            {filteredNotes.length === 0 ? (
+              <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-8 text-center text-slate-500">
+                No notes found for this subject area.
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-[640px] overflow-y-auto pr-1">
+                {filteredNotes.map((note) => (
+                  <div key={note.id} className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6 shadow-md hover:border-purple-500/15 transition relative group animate-fade-in">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
+                        {note.subject}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteNote(note.id)}
+                        className="opacity-0 group-hover:opacity-100 text-xs px-2.5 py-1 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-300 transition hover:bg-rose-500/20"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                    <h4 className="text-base font-bold text-slate-100 mb-2">{note.title}</h4>
+                    <div className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed font-sans prose prose-invert max-w-none">
+                      {note.content.split('\n').map((line, i) => {
+                        if (line.startsWith('###')) {
+                          return <h4 key={i} className="text-sm font-bold text-slate-100 mt-4 mb-2">{line.replace('###', '').trim()}</h4>
+                        }
+                        if (line.startsWith('-')) {
+                          return <li key={i} className="ml-4 list-disc text-slate-300">{line.replace('-', '').trim()}</li>
+                        }
+                        return <p key={i} className="my-1.5">{line}</p>
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      ) : (
+        // --- VOCAB & PHRASE HUB VIEW ---
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
+          {/* LEFT COLUMN: Study arena + Add Word Form */}
+          <div className="space-y-6">
+            
+            {/* FLASHCARD PRACTICE ARENA */}
+            <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg">
+              <div className="flex justify-between items-center border-b border-slate-900 pb-3 mb-4">
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Flashcard Study Arena</h3>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Flip cards and mark words as Mastered</p>
+                </div>
+                <div className="flex gap-2">
+                  {vocabList.some(v => v.status === 'mastered') && (
+                    <button
+                      type="button"
+                      onClick={resetAllMastered}
+                      className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-[9px] font-bold text-slate-300 hover:text-purple-300 transition"
+                      title="Reset mastered words to practice again"
+                    >
+                      🔄 Reset Mastered
+                    </button>
+                  )}
+                  {vocabList.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={importDeveloperPack}
+                      className="rounded-lg bg-purple-900/20 border border-purple-500/30 text-purple-300 px-2.5 py-1 text-[9px] font-bold hover:bg-purple-950/40 transition"
+                    >
+                      🚀 Import Developer Pack
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {learningWords.length === 0 ? (
+                <div className="rounded-2xl border border-slate-900 bg-slate-900/30 p-8 text-center space-y-4">
+                  <div className="text-4xl text-purple-400">🎉</div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-200">No active learning cards!</h4>
+                    <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+                      All words are either Mastered, or your vault is empty. Click the Developer Pack button or add some words to start!
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetAllMastered}
+                    className="rounded-xl bg-purple-600/20 border border-purple-500/30 px-4 py-2 text-xs font-bold text-purple-300 hover:bg-purple-600/35 transition"
+                  >
+                    Practice Mastered Words Again
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Active Card Index */}
+                  <div className="flex justify-between items-center text-[10px] text-slate-500">
+                    <span className="font-bold uppercase tracking-wider text-purple-400">
+                      Card {activeCardIndex + 1} of {learningWords.length}
+                    </span>
+                    <span className="font-medium bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full">
+                      Deck: Learning Mode
+                    </span>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 transition-all duration-300"
+                      style={{ width: `${((activeCardIndex + 1) / learningWords.length) * 100}%` }}
+                    />
+                  </div>
+
+                  {/* 3D Flip Flashcard Container */}
+                  <div 
+                    className="w-full h-72 perspective-1000 cursor-pointer select-none"
+                    onClick={() => setIsCardFlipped(!isCardFlipped)}
+                  >
+                    <div className={`relative w-full h-full duration-500 preserve-3d transition-transform ${isCardFlipped ? 'rotate-y-180' : ''}`}>
+                      
+                      {/* CARD FRONT FACE */}
+                      <div className="absolute inset-0 w-full h-full backface-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-6 flex flex-col justify-between shadow-xl">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[10px] bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-full text-slate-400 font-bold uppercase tracking-wider">
+                            {learningWords[activeCardIndex].category}
+                          </span>
+                          <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
+                            learningWords[activeCardIndex].difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                            learningWords[activeCardIndex].difficulty === 'Hard' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                            'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                          }`}>
+                            {learningWords[activeCardIndex].difficulty}
+                          </span>
+                        </div>
+
+                        <div className="text-center space-y-2">
+                          <h2 className="text-3xl font-black text-white tracking-tight leading-none">
+                            {learningWords[activeCardIndex].word}
+                          </h2>
+                          <span className="inline-block text-[11px] font-bold italic text-purple-400 bg-purple-500/5 px-2 py-0.5 rounded border border-purple-500/10">
+                            {learningWords[activeCardIndex].partOfSpeech}
+                          </span>
+                        </div>
+
+                        <div className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-widest animate-pulse">
+                          👉 Click Card to Flip & Reveal Meaning
+                        </div>
+                      </div>
+
+                      {/* CARD BACK FACE */}
+                      <div className="absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-2xl border border-purple-500/20 bg-slate-900 p-6 flex flex-col justify-between shadow-xl overflow-y-auto">
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                            <span className="text-xs font-extrabold text-white">
+                              {learningWords[activeCardIndex].word} <span className="text-[10px] font-bold text-purple-400 italic">({learningWords[activeCardIndex].partOfSpeech})</span>
+                            </span>
+                            <span className="text-[9px] bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-full text-slate-400 font-bold">
+                              {learningWords[activeCardIndex].category}
+                            </span>
+                          </div>
+
+                          <div className="space-y-3 text-xs">
+                            {/* Definition */}
+                            <div>
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Definition</span>
+                              <p className="text-slate-200 leading-relaxed font-sans">{learningWords[activeCardIndex].definition}</p>
+                            </div>
+
+                            {/* General Example */}
+                            <div>
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">General Example</span>
+                              <p className="text-slate-350 italic font-sans">"{learningWords[activeCardIndex].example}"</p>
+                            </div>
+
+                            {/* Coding Context (Optional) */}
+                            {learningWords[activeCardIndex].codeContext && (
+                              <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-850">
+                                <span className="block text-[9px] font-bold uppercase tracking-wider text-purple-400 mb-1">💻 Coding & Tech Usage</span>
+                                <code className="block text-[10px] text-slate-300 font-mono leading-relaxed">{learningWords[activeCardIndex].codeContext}</code>
+                              </div>
+                            )}
+
+                            {/* Mnemonic / Hook (Optional) */}
+                            {learningWords[activeCardIndex].mnemonic && (
+                              <div className="border-l-2 border-amber-500/40 pl-2">
+                                <span className="block text-[9px] font-bold uppercase tracking-wider text-amber-400 mb-0.5">🧠 Memory Hack</span>
+                                <p className="text-slate-350 font-sans italic text-[11px]">{learningWords[activeCardIndex].mnemonic}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-center text-[9px] text-slate-500 font-bold uppercase mt-2">
+                          👉 Click Card to Flip Back
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* Card Assessment Buttons */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleFlashcardReview(false)
+                      }}
+                      className="flex-1 rounded-2xl border border-slate-800 hover:border-slate-700 bg-slate-950/90 py-3 text-xs font-semibold text-slate-400 hover:text-slate-200 transition"
+                    >
+                      🔴 Needs Practice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleFlashcardReview(true)
+                      }}
+                      className="flex-1 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 py-3 text-xs font-semibold text-white hover:from-purple-600 hover:to-indigo-700 shadow-md shadow-purple-500/10 transition"
+                    >
+                      🟢 Mastered!
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* CREATOR FORM */}
+            <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 border-b border-slate-900 pb-3 mb-4">
+                Add Word or Phrase
+              </h3>
+
+              <form onSubmit={handleCreateVocab} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="block text-xs text-slate-450 font-semibold">
+                    Word / Phrase *
+                    <input
+                      required
+                      value={vocabWord}
+                      onChange={(e) => setVocabWord(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-550 focus:outline-none focus:border-purple-500"
+                      placeholder="e.g. Mitigate"
+                    />
+                  </label>
+
+                  <label className="block text-xs text-slate-450 font-semibold">
+                    Part of Speech
+                    <select
+                      value={vocabPartOfSpeech}
+                      onChange={(e) => setVocabPartOfSpeech(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="Noun">Noun</option>
+                      <option value="Verb">Verb</option>
+                      <option value="Adjective">Adjective</option>
+                      <option value="Adverb">Adverb</option>
+                      <option value="Phrase">Phrase</option>
+                      <option value="Idiom">Idiom</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="block text-xs text-slate-450 font-semibold">
+                    Category Area
+                    <select
+                      value={vocabCategory}
+                      onChange={(e) => setVocabCategory(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="Coding Term">Coding Term</option>
+                      <option value="General English">General English</option>
+                      <option value="Business Idiom">Business Idiom</option>
+                      <option value="Academic">Academic</option>
+                    </select>
+                  </label>
+
+                  <label className="block text-xs text-slate-450 font-semibold">
+                    Difficulty Level
+                    <select
+                      value={vocabDifficulty}
+                      onChange={(e) => setVocabDifficulty(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label className="block text-xs text-slate-450 font-semibold">
+                  Meaning & Definition *
+                  <textarea
+                    required
+                    value={vocabDefinition}
+                    onChange={(e) => setVocabDefinition(e.target.value)}
+                    rows={2}
+                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-550 focus:outline-none focus:border-purple-500 font-sans"
+                    placeholder="e.g. Make less severe, serious, or painful."
+                  />
+                </label>
+
+                <label className="block text-xs text-slate-450 font-semibold">
+                  General Example Sentence
+                  <textarea
+                    value={vocabExample}
+                    onChange={(e) => setVocabExample(e.target.value)}
+                    rows={2}
+                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-550 focus:outline-none focus:border-purple-500 font-sans"
+                    placeholder="e.g. We must take measures to mitigate the risk of flooding."
+                  />
+                </label>
+
+                <label className="block text-xs text-slate-450 font-semibold">
+                  Coding Context Example (How do developers use it?)
+                  <textarea
+                    value={vocabCodeContext}
+                    onChange={(e) => setVocabCodeContext(e.target.value)}
+                    rows={2}
+                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-550 focus:outline-none focus:border-purple-500 font-mono"
+                    placeholder="e.g. We mitigated API response latency by leveraging Redis caching."
+                  />
+                </label>
+
+                <label className="block text-xs text-slate-450 font-semibold">
+                  Memory Hook / Mnemonic Hook (Helps you remember)
+                  <input
+                    value={vocabMnemonic}
+                    onChange={(e) => setVocabMnemonic(e.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-550 focus:outline-none focus:border-purple-500 font-sans"
+                    placeholder="e.g. Mitigate sounds like Gate - shutting the gate to keep out problems."
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 py-3 text-xs font-semibold text-white shadow-lg shadow-purple-500/15 hover:from-purple-600 hover:to-indigo-700 transition"
+                >
+                  Save New Term
+                </button>
+              </form>
+            </section>
+          </div>
+
+          {/* RIGHT COLUMN: Searchable dictionary list */}
+          <div className="space-y-6">
+            
+            {/* Filters panel */}
+            <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                
+                {/* Search field */}
+                <div className="flex-1 relative">
+                  <input
+                    value={vocabSearch}
+                    onChange={(e) => setVocabSearch(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-900 pl-4 pr-10 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    placeholder="Search word, definition, coding context..."
+                  />
+                  <span className="absolute right-3.5 top-3.5 text-sm opacity-40 select-none pointer-events-none">🔍</span>
+                </div>
+
+                {/* Import/Starter Helper if list is empty */}
+                <button
+                  type="button"
+                  onClick={importDeveloperPack}
+                  className="rounded-2xl border border-slate-800 bg-slate-900/60 text-slate-350 text-xs px-4 py-3 font-semibold hover:border-purple-500/20 hover:text-purple-300 transition"
+                >
+                  📥 Developer Pack
+                </button>
+              </div>
+
+              {/* Filter Row 1: Category */}
+              <div className="space-y-1">
+                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Category Area</span>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {['All', 'Coding Term', 'General English', 'Business Idiom', 'Academic'].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setVocabFilterCategory(cat)}
+                      className={`rounded-lg px-2.5 py-1 text-[10px] font-bold border transition ${
+                        vocabFilterCategory === cat
+                          ? 'bg-purple-600/20 border-purple-500 text-purple-300'
+                          : 'border-slate-850 bg-slate-900/40 text-slate-400 hover:border-slate-800 hover:text-slate-200'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Filter Row 2: Difficulty & Status */}
+              <div className="grid grid-cols-2 gap-4 border-t border-slate-900 pt-3">
+                <div className="space-y-1">
+                  <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Difficulty</span>
+                  <div className="flex gap-1.5 pt-1">
+                    {['All', 'Easy', 'Medium', 'Hard'].map(diff => (
+                      <button
+                        key={diff}
+                        type="button"
+                        onClick={() => setVocabFilterDifficulty(diff)}
+                        className={`rounded-lg px-2 py-0.5 text-[9px] font-bold border transition ${
+                          vocabFilterDifficulty === diff
+                            ? 'bg-purple-600/20 border-purple-500 text-purple-300'
+                            : 'border-slate-850 bg-slate-900/40 text-slate-400 hover:border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
+                        {diff}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Status</span>
+                  <div className="flex gap-1.5 pt-1">
+                    {['All', 'Learning', 'Mastered'].map(status => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setVocabFilterStatus(status === 'Learning' ? 'learning' : status === 'Mastered' ? 'mastered' : 'All')}
+                        className={`rounded-lg px-2 py-0.5 text-[9px] font-bold border transition ${
+                          (status === 'Learning' && vocabFilterStatus === 'learning') || 
+                          (status === 'Mastered' && vocabFilterStatus === 'mastered') ||
+                          (status === 'All' && vocabFilterStatus === 'All')
+                            ? 'bg-purple-600/20 border-purple-500 text-purple-300'
+                            : 'border-slate-850 bg-slate-900/40 text-slate-400 hover:border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {vocabMessage && (
+              <div className="rounded-2xl border border-purple-500/20 bg-purple-950/30 p-4 text-sm text-purple-200 animate-fade-in">
+                {vocabMessage}
+              </div>
+            )}
+
+            {/* List dictionary */}
+            <div className="space-y-4 max-h-[640px] overflow-y-auto pr-1">
+              {filteredVocab.length === 0 ? (
+                <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-8 text-center text-slate-500">
+                  No vocabulary found matching your criteria.
+                </div>
+              ) : (
+                filteredVocab.map((vocab) => {
+                  const isExpanded = expandedCardIds.includes(vocab.id)
+                  const isEditing = editingWordId === vocab.id
+
+                  return (
+                    <div 
+                      key={vocab.id} 
+                      className={`rounded-3xl border bg-slate-950/80 p-5 shadow-md transition-all duration-200 animate-fade-in relative group ${
+                        isExpanded ? 'border-purple-500/20 shadow-purple-950/10' : 'border-slate-800 hover:border-purple-500/15'
+                      }`}
+                    >
+                      {/* CARD HEADER (Always Visible) */}
+                      <div 
+                        className="flex items-start justify-between cursor-pointer"
+                        onClick={() => toggleExpandCard(vocab.id)}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-base font-bold text-slate-100">{vocab.word}</h4>
+                            <span className="text-[10px] text-purple-400 italic font-semibold">({vocab.partOfSpeech})</span>
+                            
+                            {/* Status and Difficulty Badges */}
+                            <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                              vocab.difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                              vocab.difficulty === 'Hard' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                              'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            }`}>
+                              {vocab.difficulty}
+                            </span>
+
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                              vocab.status === 'mastered' 
+                                ? 'bg-emerald-600/15 text-emerald-300 border border-emerald-500/10' 
+                                : 'bg-purple-950/50 text-purple-300 border border-purple-800/20'
+                            }`}>
+                              {vocab.status === 'mastered' ? '✅ Mastered' : '📖 Learning'}
+                            </span>
+                          </div>
+                          <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                            {vocab.category}
+                          </span>
+                        </div>
+
+                        {/* Right Action tools */}
+                        <div className="flex items-center gap-1.5 onClickStopProp" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => toggleVocabStatus(vocab.id)}
+                            className={`p-1.5 rounded-xl border text-xs transition ${
+                              vocab.status === 'mastered'
+                                ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-250 hover:bg-emerald-600/30'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-purple-300 hover:border-purple-500/30'
+                            }`}
+                            title={vocab.status === 'mastered' ? 'Mark as learning' : 'Mark as mastered'}
+                          >
+                            {vocab.status === 'mastered' ? '✔️' : '⭐'}
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteVocab(vocab.id)}
+                            className="p-1.5 rounded-xl border border-rose-500/20 bg-rose-550/10 text-rose-300 hover:bg-rose-550/20 transition opacity-0 group-hover:opacity-100"
+                            title="Delete word"
+                          >
+                            🗑️
+                          </button>
+
+                          <span className={`text-slate-500 text-xs transition duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                            ▼
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* CARD DETAILS (Expanded / Collapsible view) */}
+                      {isExpanded && (
+                        <div className="mt-4 border-t border-slate-900 pt-4 space-y-4 text-xs">
+                          {isEditing ? (
+                            // Inline Edit fields
+                            <div className="space-y-3 p-3 rounded-2xl border border-slate-800 bg-slate-900/50">
+                              <span className="block text-[10px] font-extrabold uppercase text-purple-400 mb-2">Edit Word Details</span>
+                              
+                              <div className="grid grid-cols-2 gap-3">
+                                <label className="block text-[10px] font-bold text-slate-400">
+                                  Word name
+                                  <input 
+                                    value={editFields.word || ''} 
+                                    onChange={(e) => setEditFields({ ...editFields, word: e.target.value })}
+                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
+                                  />
+                                </label>
+                                <label className="block text-[10px] font-bold text-slate-400">
+                                  Part of Speech
+                                  <input 
+                                    value={editFields.partOfSpeech || ''} 
+                                    onChange={(e) => setEditFields({ ...editFields, partOfSpeech: e.target.value })}
+                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
+                                  />
+                                </label>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                <label className="block text-[10px] font-bold text-slate-400">
+                                  Category
+                                  <select 
+                                    value={editFields.category || ''} 
+                                    onChange={(e) => setEditFields({ ...editFields, category: e.target.value })}
+                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-white"
+                                  >
+                                    <option value="Coding Term">Coding Term</option>
+                                    <option value="General English">General English</option>
+                                    <option value="Business Idiom">Business Idiom</option>
+                                    <option value="Academic">Academic</option>
+                                  </select>
+                                </label>
+                                <label className="block text-[10px] font-bold text-slate-400">
+                                  Difficulty
+                                  <select 
+                                    value={editFields.difficulty || ''} 
+                                    onChange={(e) => setEditFields({ ...editFields, difficulty: e.target.value })}
+                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-white"
+                                  >
+                                    <option value="Easy">Easy</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="Hard">Hard</option>
+                                  </select>
+                                </label>
+                              </div>
+
+                              <label className="block text-[10px] font-bold text-slate-400">
+                                Definition
+                                <textarea 
+                                  value={editFields.definition || ''} 
+                                  onChange={(e) => setEditFields({ ...editFields, definition: e.target.value })}
+                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-sans"
+                                  rows={2}
+                                />
+                              </label>
+
+                              <label className="block text-[10px] font-bold text-slate-400">
+                                General Example
+                                <textarea 
+                                  value={editFields.example || ''} 
+                                  onChange={(e) => setEditFields({ ...editFields, example: e.target.value })}
+                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-sans"
+                                  rows={2}
+                                />
+                              </label>
+
+                              <label className="block text-[10px] font-bold text-slate-400">
+                                Coding Context
+                                <textarea 
+                                  value={editFields.codeContext || ''} 
+                                  onChange={(e) => setEditFields({ ...editFields, codeContext: e.target.value })}
+                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono"
+                                  rows={2}
+                                />
+                              </label>
+
+                              <label className="block text-[10px] font-bold text-slate-400">
+                                Memory Hook
+                                <input 
+                                  value={editFields.mnemonic || ''} 
+                                  onChange={(e) => setEditFields({ ...editFields, mnemonic: e.target.value })}
+                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-sans"
+                                />
+                              </label>
+
+                              <div className="flex gap-2 pt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingWordId(null)}
+                                  className="flex-1 rounded-xl border border-slate-850 bg-slate-950 text-[10px] py-2 font-semibold transition"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={saveEditing}
+                                  className="flex-1 rounded-xl bg-purple-600 text-[10px] py-2 font-semibold text-white hover:bg-purple-700 transition"
+                                >
+                                  Save Changes
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            // Render static details
+                            <div className="space-y-3 animate-fade-in">
+                              
+                              {/* Definition */}
+                              <div>
+                                <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Definition</span>
+                                <p className="text-slate-200 leading-relaxed font-sans">{vocab.definition}</p>
+                              </div>
+
+                              {/* General Example */}
+                              {vocab.example && (
+                                <div>
+                                  <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">Example Usage</span>
+                                  <p className="text-slate-350 italic font-sans">"{vocab.example}"</p>
+                                </div>
+                              )}
+
+                              {/* Coding Context Example */}
+                              {vocab.codeContext && (
+                                <div className="bg-slate-950/70 p-3 rounded-2xl border border-slate-900">
+                                  <span className="block text-[9px] font-bold uppercase tracking-wider text-purple-400 mb-1">💻 Coding & Tech Context</span>
+                                  <code className="block text-[11px] text-slate-300 font-mono leading-relaxed">{vocab.codeContext}</code>
+                                </div>
+                              )}
+
+                              {/* Mnemonic Hook */}
+                              {vocab.mnemonic && (
+                                <div className="border-l-2 border-amber-500/40 pl-3">
+                                  <span className="block text-[9px] font-bold uppercase tracking-wider text-amber-400 mb-0.5">🧠 Memory Hack (Mnemonic)</span>
+                                  <p className="text-slate-350 italic text-[11px] font-sans">{vocab.mnemonic}</p>
+                                </div>
+                              )}
+
+                              {/* Action Footer */}
+                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-900">
+                                <button
+                                  type="button"
+                                  onClick={() => startEditing(vocab)}
+                                  className="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-[10px] font-bold text-slate-300 hover:text-purple-300 hover:border-purple-500/20 transition"
+                                >
+                                  ✏️ Edit Word
+                                </button>
+                              </div>
+
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
