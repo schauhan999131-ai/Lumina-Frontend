@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store'
+
+const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || 'http://localhost:4000'
 
 export default function Signup() {
   const [email, setEmail] = useState('')
@@ -10,8 +12,21 @@ export default function Signup() {
   const [plan, setPlan] = useState('Free')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [serverStatus, setServerStatus] = useState('checking')
   const signup = useAppStore((state) => state.signup)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const warmUp = async () => {
+      try {
+        await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(60000) })
+        setServerStatus('ready')
+      } catch {
+        setServerStatus('error')
+      }
+    }
+    warmUp()
+  }, [])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -57,6 +72,17 @@ export default function Signup() {
 
         <div className="relative z-10">
           <div className="rounded-3xl border border-purple-500/30 bg-gradient-to-br from-slate-900/80 to-purple-900/50 backdrop-blur-xl p-8 shadow-2xl">
+            {/* Server warm-up banner */}
+            {serverStatus === 'checking' && (
+              <div className="mb-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-300 flex items-center gap-2">
+                <svg className="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                Server is starting up — this may take up to 60 seconds on free tier.
+              </div>
+            )}
+
             {/* Header */}
             <div className="text-center mb-8">
               <div className="inline-block p-3 bg-gradient-to-br from-purple-500 to-emerald-500 rounded-full mb-4">
