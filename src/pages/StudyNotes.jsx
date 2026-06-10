@@ -212,6 +212,7 @@ export default function StudyNotes() {
   const [vocabFilterDifficulty, setVocabFilterDifficulty] = useState('All')
   const [vocabFilterStatus, setVocabFilterStatus] = useState('All')
   const [vocabMessage, setVocabMessage] = useState(null)
+  const [vocabImage, setVocabImage] = useState(null)
 
   // Flashcards state
   const [activeCardIndex, setActiveCardIndex] = useState(0)
@@ -387,6 +388,7 @@ export default function StudyNotes() {
       example: vocabExample.trim(),
       codeContext: vocabCodeContext.trim(),
       mnemonic: vocabMnemonic.trim(),
+      image: vocabImage || null,
       status: 'learning'
     }
 
@@ -399,6 +401,7 @@ export default function StudyNotes() {
     setVocabExample('')
     setVocabCodeContext('')
     setVocabMnemonic('')
+    setVocabImage(null)
     setVocabMessage('Word added to vault!')
     setTimeout(() => setVocabMessage(null), 3000)
   }
@@ -505,6 +508,33 @@ export default function StudyNotes() {
     setEditingWordId(null)
     setVocabMessage('Word details updated.')
     setTimeout(() => setVocabMessage(null), 3000)
+  }
+
+  const handleImagePaste = (e, setter) => {
+    const items = Array.from(e.clipboardData.items)
+    const imageItem = items.find(item => item.type.startsWith('image/'))
+    if (!imageItem) return
+    e.preventDefault()
+    const blob = imageItem.getAsFile()
+    const reader = new FileReader()
+    reader.onload = (evt) => setter(evt.target.result)
+    reader.readAsDataURL(blob)
+  }
+
+  const handleNoteImagePaste = (noteId, e) => {
+    const items = Array.from(e.clipboardData.items)
+    const imageItem = items.find(item => item.type.startsWith('image/'))
+    if (!imageItem) return
+    e.preventDefault()
+    const note = notes.find(n => n.id === noteId)
+    if (!note) return
+    const blob = imageItem.getAsFile()
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      const images = [...(note.images || []), { id: Date.now(), src: evt.target.result }]
+      updateNote(noteId, { images })
+    }
+    reader.readAsDataURL(blob)
   }
 
   // Filters and search for the Dictionary List
@@ -797,9 +827,41 @@ export default function StudyNotes() {
                       <textarea
                         value={activeNote.content || ''}
                         onChange={(e) => updateNote(activeNote.id, { content: e.target.value })}
+                        onPaste={(e) => handleNoteImagePaste(activeNote.id, e)}
                         className="w-full flex-1 mt-4 bg-transparent resize-none border-0 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none leading-relaxed overflow-y-auto pr-1 border-t border-slate-900 pt-3"
                         placeholder="Write about the project planning, system designs, or details (Supports basic Markdown tags like ### headers and - bullet lists)..."
                       />
+
+                      {/* Pasted Images Gallery */}
+                      {(activeNote.images || []).length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-900 space-y-2">
+                          <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Pasted Images</span>
+                          <div className="flex flex-wrap gap-2">
+                            {(activeNote.images || []).map((img) => (
+                              <div key={img.id} className="relative group/img">
+                                <img
+                                  src={img.src}
+                                  alt=""
+                                  className="h-24 w-auto max-w-[200px] rounded-xl border border-slate-800 object-cover cursor-pointer hover:border-purple-500/30 transition"
+                                  onClick={() => window.open(img.src, '_blank')}
+                                  title="Click to open full size"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = (activeNote.images || []).filter(i => i.id !== img.id)
+                                    updateNote(activeNote.id, { images: updated })
+                                  }}
+                                  className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/img:opacity-100 bg-rose-500 hover:bg-rose-600 text-white rounded-full w-4 h-4 text-[9px] flex items-center justify-center transition"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[9px] text-slate-600">Paste more images with Ctrl+V / Cmd+V in the text area above</p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Interactive Checklist Panel */}
@@ -1047,6 +1109,14 @@ export default function StudyNotes() {
                                 <p className="text-slate-350 font-sans italic text-[11px]">{learningWords[activeCardIndex].mnemonic}</p>
                               </div>
                             )}
+
+                            {/* Visual Reference Image */}
+                            {learningWords[activeCardIndex].image && (
+                              <div>
+                                <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">🖼️ Visual Reference</span>
+                                <img src={learningWords[activeCardIndex].image} alt="Visual reference" className="max-h-28 rounded-xl object-contain border border-slate-800" />
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -1193,6 +1263,35 @@ export default function StudyNotes() {
                     placeholder="e.g. Mitigate sounds like Gate - shutting the gate to keep out problems."
                   />
                 </label>
+
+                <div className="block text-xs text-slate-450 font-semibold">
+                  Visual Reference Image (Optional)
+                  <div
+                    className="mt-2 w-full rounded-2xl border-2 border-dashed border-slate-700 bg-slate-900 focus:outline-none focus:border-purple-500 transition cursor-pointer relative overflow-hidden hover:border-purple-500/40"
+                    onPaste={(e) => handleImagePaste(e, setVocabImage)}
+                    tabIndex={0}
+                    title="Click to focus, then Ctrl+V / Cmd+V to paste an image"
+                  >
+                    {vocabImage ? (
+                      <div className="relative p-2">
+                        <img src={vocabImage} alt="Visual reference" className="max-h-36 mx-auto rounded-xl object-contain" />
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setVocabImage(null) }}
+                          className="absolute top-3 right-3 bg-rose-500/80 hover:bg-rose-600 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="px-4 py-5 text-center space-y-1">
+                        <span className="text-xl opacity-50">🖼️</span>
+                        <p className="text-[10px] text-slate-500">Click here, then paste (Ctrl+V / Cmd+V)</p>
+                        <p className="text-[9px] text-slate-600">Works with screenshots, Google Images, any copied image</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 <button
                   type="submit"
@@ -1527,6 +1626,20 @@ export default function StudyNotes() {
                                 <div className="border-l-2 border-amber-500/40 pl-3">
                                   <span className="block text-[9px] font-bold uppercase tracking-wider text-amber-400 mb-0.5">🧠 Memory Hack (Mnemonic)</span>
                                   <p className="text-slate-350 italic text-[11px] font-sans">{vocab.mnemonic}</p>
+                                </div>
+                              )}
+
+                              {/* Visual Reference Image */}
+                              {vocab.image && (
+                                <div>
+                                  <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">🖼️ Visual Reference</span>
+                                  <img
+                                    src={vocab.image}
+                                    alt="Visual reference"
+                                    className="max-h-40 rounded-2xl object-contain border border-slate-800 cursor-pointer hover:border-purple-500/30 transition"
+                                    onClick={() => window.open(vocab.image, '_blank')}
+                                    title="Click to open full size"
+                                  />
                                 </div>
                               )}
 
