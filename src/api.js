@@ -155,4 +155,13 @@ export const parseNoteHealthEntries = (noteId, content) =>
     body: JSON.stringify({ noteId, content }),
   })
 
+export const getTimerState = () =>
+  request('/api/auth/timer')
+
+export const updateTimerState = (timerData) =>
+  request('/api/auth/timer', {
+    method: 'PUT',
+    body: JSON.stringify(timerData),
+  })
+
 

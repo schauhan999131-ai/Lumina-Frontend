@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getTimerState, updateTimerState } from '../api'
 
 export default function FocusTimer() {
   // Configurable durations in minutes (persisted in localStorage)
@@ -15,13 +16,46 @@ export default function FocusTimer() {
     return saved ? parseInt(saved, 10) : 15
   })
 
-  const [mode, setMode] = useState('work') // 'work', 'short', 'long'
-  const [timeLeft, setTimeLeft] = useState(() => {
-    const saved = localStorage.getItem('study_work_duration')
-    const mins = saved ? parseInt(saved, 10) : 25
-    return mins * 60
+  const [mode, setMode] = useState(() => {
+    return localStorage.getItem('study_timer_mode') || 'work'
   })
-  const [isActive, setIsActive] = useState(false)
+
+  const [isActive, setIsActive] = useState(() => {
+    return localStorage.getItem('study_timer_active') === 'true'
+  })
+
+  const [timeLeft, setTimeLeft] = useState(() => {
+    const active = localStorage.getItem('study_timer_active') === 'true'
+    const savedMode = localStorage.getItem('study_timer_mode') || 'work'
+    
+    // Get total duration for current mode
+    let durationMins = 25
+    if (savedMode === 'work') {
+      const saved = localStorage.getItem('study_work_duration')
+      durationMins = saved ? parseInt(saved, 10) : 25
+    } else if (savedMode === 'short') {
+      const saved = localStorage.getItem('study_short_duration')
+      durationMins = saved ? parseInt(saved, 10) : 5
+    } else {
+      const saved = localStorage.getItem('study_long_duration')
+      durationMins = saved ? parseInt(saved, 10) : 15
+    }
+    
+    if (active) {
+      const endTime = localStorage.getItem('study_timer_endtime')
+      if (endTime) {
+        const remaining = Math.ceil((parseInt(endTime, 10) - Date.now()) / 1000)
+        return Math.max(0, remaining)
+      }
+    }
+    
+    const savedTimeLeft = localStorage.getItem('study_timer_time_left')
+    if (savedTimeLeft) {
+      return parseInt(savedTimeLeft, 10)
+    }
+    
+    return durationMins * 60
+  })
   
   const [sessionsCompleted, setSessionsCompleted] = useState(() => {
     const saved = localStorage.getItem('study_sessions_completed')
@@ -51,97 +85,339 @@ export default function FocusTimer() {
     localStorage.setItem('study_focus_history', JSON.stringify(history))
   }, [history])
 
-  // Countdowns effect
+  // Sync state to backend helper
+  const syncTimerToBackend = async (updates) => {
+    try {
+      await updateTimerState(updates)
+    } catch (err) {
+      console.warn('Failed to sync timer state to backend:', err.message)
+    }
+  }
+
+  // Fetch backend state on mount
   useEffect(() => {
-    let timer = null
-    if (isActive && timeLeft > 0) {
-      timer = setInterval(() => {
-        setTimeLeft((prev) => prev - 1)
-      }, 1000)
-    } else if (timeLeft === 0) {
-      setIsActive(false)
-      if (mode === 'work') {
-        setSessionsCompleted((prev) => prev + 1)
-        setFocusMinutes((prev) => prev + workDuration)
-        
-        // Log Focus entry
-        setHistory((prev) => [
-          {
-            id: Date.now(),
-            type: 'work',
-            duration: workDuration,
-            timestamp: new Date().toISOString()
-          },
-          ...prev
-        ])
-
-        alert('🎯 Focus session completed! Time for a short break.')
-        setMode('short')
-        setTimeLeft(shortDuration * 60)
-      } else {
-        // Log Break entry
-        setHistory((prev) => [
-          {
-            id: Date.now(),
-            type: mode, // 'short' or 'long'
-            duration: mode === 'short' ? shortDuration : longDuration,
-            timestamp: new Date().toISOString()
-          },
-          ...prev
-        ])
-
-        alert('☀️ Break is over! Ready to focus?')
-        setMode('work')
-        setTimeLeft(workDuration * 60)
+    const fetchBackendTimerState = async () => {
+      try {
+        const state = await getTimerState()
+        if (state) {
+          if (state.studyWorkDuration !== undefined) {
+            setWorkDuration(state.studyWorkDuration)
+            localStorage.setItem('study_work_duration', state.studyWorkDuration.toString())
+          }
+          if (state.studyShortDuration !== undefined) {
+            setShortDuration(state.studyShortDuration)
+            localStorage.setItem('study_short_duration', state.studyShortDuration.toString())
+          }
+          if (state.studyLongDuration !== undefined) {
+            setLongDuration(state.studyLongDuration)
+            localStorage.setItem('study_long_duration', state.studyLongDuration.toString())
+          }
+          if (state.studyTimerMode !== undefined) {
+            setMode(state.studyTimerMode)
+            localStorage.setItem('study_timer_mode', state.studyTimerMode)
+          }
+          if (state.studyTimerActive !== undefined) {
+            setIsActive(state.studyTimerActive)
+            localStorage.setItem('study_timer_active', state.studyTimerActive.toString())
+          }
+          if (state.studyTimerEndTime !== undefined && state.studyTimerEndTime > 0) {
+            localStorage.setItem('study_timer_endtime', state.studyTimerEndTime.toString())
+            const remaining = Math.max(0, Math.ceil((state.studyTimerEndTime - Date.now()) / 1000))
+            setTimeLeft(remaining)
+          } else if (state.studyTimerTimeLeft !== undefined) {
+            setTimeLeft(state.studyTimerTimeLeft)
+            localStorage.setItem('study_timer_time_left', state.studyTimerTimeLeft.toString())
+          }
+          if (state.studySessionsCompleted !== undefined) {
+            setSessionsCompleted(state.studySessionsCompleted)
+            localStorage.setItem('study_sessions_completed', state.studySessionsCompleted.toString())
+          }
+          if (state.studyFocusMinutes !== undefined) {
+            setFocusMinutes(state.studyFocusMinutes)
+            localStorage.setItem('study_focus_minutes', state.studyFocusMinutes.toString())
+          }
+          if (state.studyFocusHistory !== undefined) {
+            try {
+              const parsedHistory = JSON.parse(state.studyFocusHistory)
+              setHistory(parsedHistory)
+              localStorage.setItem('study_focus_history', state.studyFocusHistory)
+            } catch (e) {
+              console.error('Error parsing focus history:', e)
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch timer state from backend (running offline/fallback):', err.message)
       }
     }
-    return () => clearInterval(timer)
-  }, [isActive, timeLeft, mode, workDuration, shortDuration, longDuration])
+    fetchBackendTimerState()
+  }, [])
+
+  const handleCompletion = (completedMode) => {
+    setIsActive(false)
+    localStorage.setItem('study_timer_active', 'false')
+    localStorage.removeItem('study_timer_endtime')
+    localStorage.removeItem('study_timer_time_left')
+
+    let nextMode = 'work'
+    let nextTimeLeft = 25 * 60
+    let duration = 25
+    let newSessions = sessionsCompleted
+    let newMins = focusMinutes
+    let newHistory = history
+
+    if (completedMode === 'work') {
+      duration = parseInt(localStorage.getItem('study_work_duration') || '25', 10)
+      newSessions = sessionsCompleted + 1
+      newMins = focusMinutes + duration
+
+      const historyEntry = {
+        id: Date.now(),
+        type: 'work',
+        duration: duration,
+        timestamp: new Date().toISOString()
+      }
+      newHistory = [historyEntry, ...history]
+
+      setSessionsCompleted(newSessions)
+      setFocusMinutes(newMins)
+      setHistory(newHistory)
+
+      alert('🎯 Focus session completed! Time for a short break.')
+      
+      nextMode = 'short'
+      setMode('short')
+      localStorage.setItem('study_timer_mode', 'short')
+      const shortMins = parseInt(localStorage.getItem('study_short_duration') || '5', 10)
+      nextTimeLeft = shortMins * 60
+      setTimeLeft(nextTimeLeft)
+    } else {
+      duration = completedMode === 'short' 
+        ? parseInt(localStorage.getItem('study_short_duration') || '5', 10)
+        : parseInt(localStorage.getItem('study_long_duration') || '15', 10)
+      
+      const historyEntry = {
+        id: Date.now(),
+        type: completedMode,
+        duration: duration,
+        timestamp: new Date().toISOString()
+      }
+      newHistory = [historyEntry, ...history]
+      setHistory(newHistory)
+
+      alert('☀️ Break is over! Ready to focus?')
+
+      nextMode = 'work'
+      setMode('work')
+      localStorage.setItem('study_timer_mode', 'work')
+      const workMins = parseInt(localStorage.getItem('study_work_duration') || '25', 10)
+      nextTimeLeft = workMins * 60
+      setTimeLeft(nextTimeLeft)
+    }
+
+    syncTimerToBackend({
+      studyTimerActive: false,
+      studyTimerEndTime: 0,
+      studyTimerTimeLeft: nextTimeLeft,
+      studyTimerMode: nextMode,
+      studySessionsCompleted: newSessions,
+      studyFocusMinutes: newMins,
+      studyFocusHistory: JSON.stringify(newHistory)
+    })
+  }
+
+  // Effect to run the timer when active
+  useEffect(() => {
+    if (!isActive) return
+
+    const endTimeStr = localStorage.getItem('study_timer_endtime')
+    if (!endTimeStr) return
+
+    const endTime = parseInt(endTimeStr, 10)
+
+    const runTimer = () => {
+      const now = Date.now()
+      const remaining = Math.max(0, Math.ceil((endTime - now) / 1000))
+
+      if (remaining <= 0) {
+        handleCompletion(mode)
+        return true
+      } else {
+        setTimeLeft(remaining)
+        return false
+      }
+    }
+
+    const completed = runTimer()
+    if (completed) return
+
+    const interval = setInterval(() => {
+      runTimer()
+    }, 200)
+
+    return () => clearInterval(interval)
+  }, [isActive, mode])
 
   // Handle manual mode changes
   const handleModeChange = (newMode) => {
     setMode(newMode)
+    localStorage.setItem('study_timer_mode', newMode)
     setIsActive(false)
-    if (newMode === 'work') setTimeLeft(workDuration * 60)
-    else if (newMode === 'short') setTimeLeft(shortDuration * 60)
-    else if (newMode === 'long') setTimeLeft(longDuration * 60)
+    localStorage.setItem('study_timer_active', 'false')
+    localStorage.removeItem('study_timer_endtime')
+    localStorage.removeItem('study_timer_time_left')
+    
+    let durationMins = 25
+    if (newMode === 'work') durationMins = workDuration
+    else if (newMode === 'short') durationMins = shortDuration
+    else if (newMode === 'long') durationMins = longDuration
+    const newTime = durationMins * 60
+    setTimeLeft(newTime)
+
+    syncTimerToBackend({
+      studyTimerMode: newMode,
+      studyTimerActive: false,
+      studyTimerEndTime: 0,
+      studyTimerTimeLeft: newTime
+    })
   }
 
   const toggleTimer = () => {
-    setIsActive(!isActive)
+    const newActive = !isActive
+    setIsActive(newActive)
+    localStorage.setItem('study_timer_active', newActive.toString())
+
+    let endTime = 0
+    let timeLeftVal = timeLeft
+
+    if (newActive) {
+      endTime = Date.now() + timeLeft * 1000
+      localStorage.setItem('study_timer_endtime', endTime.toString())
+      localStorage.removeItem('study_timer_time_left')
+    } else {
+      localStorage.setItem('study_timer_time_left', timeLeft.toString())
+      localStorage.removeItem('study_timer_endtime')
+    }
+
+    syncTimerToBackend({
+      studyTimerActive: newActive,
+      studyTimerEndTime: endTime,
+      studyTimerTimeLeft: timeLeftVal
+    })
   }
 
   const resetTimer = () => {
     setIsActive(false)
+    localStorage.setItem('study_timer_active', 'false')
+    localStorage.removeItem('study_timer_endtime')
+    localStorage.removeItem('study_timer_time_left')
     handleModeChange(mode)
   }
 
   // Stepper setters with boundary limits (1-180 minutes)
   const updateWorkDuration = (val) => {
     const newVal = Math.max(1, Math.min(180, val))
+    const oldVal = workDuration
     setWorkDuration(newVal)
     localStorage.setItem('study_work_duration', newVal.toString())
-    if (mode === 'work' && !isActive) {
-      setTimeLeft(newVal * 60)
+    
+    let finalTimeLeft = timeLeft
+    let finalEndTime = 0
+
+    if (mode === 'work') {
+      if (!isActive) {
+        finalTimeLeft = newVal * 60
+        setTimeLeft(finalTimeLeft)
+        localStorage.removeItem('study_timer_time_left')
+      } else {
+        const diffSeconds = (newVal - oldVal) * 60
+        const endTimeStr = localStorage.getItem('study_timer_endtime')
+        if (endTimeStr) {
+          finalEndTime = parseInt(endTimeStr, 10) + diffSeconds * 1000
+          localStorage.setItem('study_timer_endtime', finalEndTime.toString())
+          finalTimeLeft = Math.max(0, timeLeft + diffSeconds)
+          setTimeLeft(finalTimeLeft)
+        }
+      }
     }
+
+    syncTimerToBackend({
+      studyWorkDuration: newVal,
+      ...(mode === 'work' ? {
+        studyTimerTimeLeft: finalTimeLeft,
+        studyTimerEndTime: finalEndTime
+      } : {})
+    })
   }
 
   const updateShortDuration = (val) => {
     const newVal = Math.max(1, Math.min(180, val))
+    const oldVal = shortDuration
     setShortDuration(newVal)
     localStorage.setItem('study_short_duration', newVal.toString())
-    if (mode === 'short' && !isActive) {
-      setTimeLeft(newVal * 60)
+    
+    let finalTimeLeft = timeLeft
+    let finalEndTime = 0
+
+    if (mode === 'short') {
+      if (!isActive) {
+        finalTimeLeft = newVal * 60
+        setTimeLeft(finalTimeLeft)
+        localStorage.removeItem('study_timer_time_left')
+      } else {
+        const diffSeconds = (newVal - oldVal) * 60
+        const endTimeStr = localStorage.getItem('study_timer_endtime')
+        if (endTimeStr) {
+          finalEndTime = parseInt(endTimeStr, 10) + diffSeconds * 1000
+          localStorage.setItem('study_timer_endtime', finalEndTime.toString())
+          finalTimeLeft = Math.max(0, timeLeft + diffSeconds)
+          setTimeLeft(finalTimeLeft)
+        }
+      }
     }
+
+    syncTimerToBackend({
+      studyShortDuration: newVal,
+      ...(mode === 'short' ? {
+        studyTimerTimeLeft: finalTimeLeft,
+        studyTimerEndTime: finalEndTime
+      } : {})
+    })
   }
 
   const updateLongDuration = (val) => {
     const newVal = Math.max(1, Math.min(180, val))
+    const oldVal = longDuration
     setLongDuration(newVal)
     localStorage.setItem('study_long_duration', newVal.toString())
-    if (mode === 'long' && !isActive) {
-      setTimeLeft(newVal * 60)
+    
+    let finalTimeLeft = timeLeft
+    let finalEndTime = 0
+
+    if (mode === 'long') {
+      if (!isActive) {
+        finalTimeLeft = newVal * 60
+        setTimeLeft(finalTimeLeft)
+        localStorage.removeItem('study_timer_time_left')
+      } else {
+        const diffSeconds = (newVal - oldVal) * 60
+        const endTimeStr = localStorage.getItem('study_timer_endtime')
+        if (endTimeStr) {
+          finalEndTime = parseInt(endTimeStr, 10) + diffSeconds * 1000
+          localStorage.setItem('study_timer_endtime', finalEndTime.toString())
+          finalTimeLeft = Math.max(0, timeLeft + diffSeconds)
+          setTimeLeft(finalTimeLeft)
+        }
+      }
     }
+
+    syncTimerToBackend({
+      studyLongDuration: newVal,
+      ...(mode === 'long' ? {
+        studyTimerTimeLeft: finalTimeLeft,
+        studyTimerEndTime: finalEndTime
+      } : {})
+    })
   }
 
   const clearHistory = () => {
@@ -149,6 +425,12 @@ export default function FocusTimer() {
       setHistory([])
       setSessionsCompleted(0)
       setFocusMinutes(0)
+      
+      syncTimerToBackend({
+        studySessionsCompleted: 0,
+        studyFocusMinutes: 0,
+        studyFocusHistory: '[]'
+      })
     }
   }
 
