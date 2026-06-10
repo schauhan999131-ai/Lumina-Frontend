@@ -60,6 +60,20 @@ const noteTemplates = {
 ### 🥗 Health & Nutrition Tracker (Auto-Syncs to Health Vault on Save)
 [protein: 30 | cal: 400 | food: Chicken Breast]
 [protein: 24 | cal: 120 | food: Whey Protein Shake]`,
+
+  projectPlanning: `### 📋 Project Planning & Milestone Roadmap
+*Outline the core milestones, timeline, and delivery requirements for the current project.*
+
+### 🎯 Core Milestones
+- **Milestone 1**: Complete high-fidelity designs & layout system
+- **Milestone 2**: Build interactive components & Notion integration
+- **Milestone 3**: Setup Express API server & connect MongoDB
+- **Milestone 4**: Conduct deployment & speed optimization checks
+
+### 💡 Core Features to Deliver
+1. Interactive Dashboard widget summaries
+2. Real-time checklist and progress trackers for active pages
+3. Auto-syncing ledgers with Wealth and Health Vault profiles`,
 }
 
 // Starter Vocabulary Pack
@@ -174,9 +188,9 @@ export default function StudyNotes() {
     const saved = localStorage.getItem('lumina_notes')
     return saved ? JSON.parse(saved) : initialNotes
   })
-  const [title, setTitle] = useState('')
-  const [subject, setSubject] = useState('Software Engineering')
-  const [content, setContent] = useState('')
+  const [activeNoteId, setActiveNoteId] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [newTodoText, setNewTodoText] = useState('')
   const [selectedSubject, setSelectedSubject] = useState('All')
   const [message, setMessage] = useState(null)
 
@@ -223,31 +237,31 @@ export default function StudyNotes() {
   }, [notes])
 
   // --- KNOWLEDGE NOTES FUNCTIONS ---
-  const handleCreateNote = (e) => {
-    e.preventDefault()
-    if (!title.trim() || !content.trim()) {
-      setMessage('Please enter a note title and details.')
-      return
-    }
-
-    const note = {
-      id: Date.now(),
-      title: title.trim(),
-      subject,
-      content: content.trim(),
-    }
-
-    const updatedNotes = [note, ...notes]
+  const updateNote = (id, updatedFields) => {
+    const updatedNotes = notes.map((note) => {
+      if (note.id === id) {
+        return { ...note, ...updatedFields }
+      }
+      return note
+    })
     setNotes(updatedNotes)
     localStorage.setItem('lumina_notes', JSON.stringify(updatedNotes))
-    
-    parseNoteWealth(note.id, note.content).catch((err) => console.error(err))
-    parseNoteHealth(note.id, note.content).catch((err) => console.error(err))
+  }
 
-    setTitle('')
-    setContent('')
-    setMessage('Note created and ledger synced!')
-    setTimeout(() => setMessage(null), 3000)
+  const handleCreateNewNote = () => {
+    const newNote = {
+      id: Date.now(),
+      title: 'Untitled Note',
+      subject: 'Software Engineering',
+      content: '',
+      todos: []
+    }
+    const updatedNotes = [newNote, ...notes]
+    setNotes(updatedNotes)
+    localStorage.setItem('lumina_notes', JSON.stringify(updatedNotes))
+    setActiveNoteId(newNote.id)
+    setMessage('New note created!')
+    setTimeout(() => setMessage(null), 2000)
   }
 
   const handleDeleteNote = (id) => {
@@ -258,27 +272,97 @@ export default function StudyNotes() {
     parseNoteWealth(id, '').catch((err) => console.error(err))
     parseNoteHealth(id, '').catch((err) => console.error(err))
 
+    if (activeNoteId === id) {
+      setActiveNoteId(null)
+    }
+
     setMessage('Note deleted.')
     setTimeout(() => setMessage(null), 3000)
   }
 
   const handleLoadTemplate = (type) => {
+    if (!activeNoteId) return
+    let contentVal = ''
+    let defaultTitle = ''
+    let defaultSubject = 'Software Engineering'
+
     if (type === 'website') {
-      setContent(noteTemplates.websitePlan)
-      if (!title) setTitle('New Website Architecture Plan')
-      setSubject('System Design')
+      contentVal = noteTemplates.websitePlan
+      defaultTitle = 'New Website Architecture Plan'
+      defaultSubject = 'System Design'
     } else if (type === 'business') {
-      setContent(noteTemplates.businessModel)
-      if (!title) setTitle('New Project Monetization Plan')
-      setSubject('Product Design')
-    } else {
-      setContent('')
+      contentVal = noteTemplates.businessModel
+      defaultTitle = 'New Project Monetization Plan'
+      defaultSubject = 'Product Design'
+    } else if (type === 'project') {
+      contentVal = noteTemplates.projectPlanning
+      defaultTitle = 'Project Roadmap & Milestone Plan'
+      defaultSubject = 'Software Engineering'
     }
+
+    updateNote(activeNoteId, {
+      title: defaultTitle,
+      subject: defaultSubject,
+      content: contentVal
+    })
   }
 
-  const filteredNotes = notes.filter(
-    (n) => selectedSubject === 'All' || n.subject === selectedSubject,
-  )
+  const handleSyncNoteVaults = (note) => {
+    if (!note) return
+    parseNoteWealth(note.id, note.content || '')
+      .then(() => parseNoteHealth(note.id, note.content || ''))
+      .then(() => {
+        setMessage('Note synced to Wealth & Health Vaults!')
+        setTimeout(() => setMessage(null), 3000)
+      })
+      .catch((err) => {
+        console.error(err)
+        setMessage('Sync completed with warnings.')
+        setTimeout(() => setMessage(null), 3000)
+      })
+  }
+
+  // Checklist helper functions
+  const handleAddTodo = (noteId) => {
+    if (!newTodoText.trim()) return
+    const activeNote = notes.find((n) => n.id === noteId)
+    if (!activeNote) return
+
+    const newTodo = {
+      id: Date.now(),
+      text: newTodoText.trim(),
+      completed: false
+    }
+
+    const updatedTodos = [...(activeNote.todos || []), newTodo]
+    updateNote(noteId, { todos: updatedTodos })
+    setNewTodoText('')
+  }
+
+  const handleToggleTodo = (noteId, todoId) => {
+    const activeNote = notes.find((n) => n.id === noteId)
+    if (!activeNote) return
+
+    const updatedTodos = (activeNote.todos || []).map((t) =>
+      t.id === todoId ? { ...t, completed: !t.completed } : t
+    )
+    updateNote(noteId, { todos: updatedTodos })
+  }
+
+  const handleDeleteTodo = (noteId, todoId) => {
+    const activeNote = notes.find((n) => n.id === noteId)
+    if (!activeNote) return
+
+    const updatedTodos = (activeNote.todos || []).filter((t) => t.id !== todoId)
+    updateNote(noteId, { todos: updatedTodos })
+  }
+
+  const filteredNotes = notes.filter((n) => {
+    const matchesSubject = selectedSubject === 'All' || n.subject === selectedSubject
+    const matchesQuery = n.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         (n.content && n.content.toLowerCase().includes(searchQuery.toLowerCase()))
+    return matchesSubject && matchesQuery
+  })
 
   // --- VOCAB & PHRASE HUB FUNCTIONS ---
   const handleSaveVocabList = (updated) => {
@@ -484,154 +568,335 @@ export default function StudyNotes() {
 
       {/* RENDER ACTIVE TAB */}
       {activeTab === 'notes' ? (
-        // --- NOTE VAULT VIEW (ORIGINAL CONTENT) ---
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
-          {/* Creator block */}
-          <section className="space-y-6 rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg self-start">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-900 pb-3">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Create Knowledge Note</h3>
-              
-              {/* Template Selector Controls */}
-              <div className="flex gap-1.5 select-none">
-                <button
-                  type="button"
-                  onClick={() => handleLoadTemplate('website')}
-                  className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-[9px] font-bold text-slate-300 hover:text-purple-300 transition"
-                  title="Load sitemap / database setup template"
-                >
-                  🌐 Web Plan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleLoadTemplate('business')}
-                  className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-[9px] font-bold text-slate-300 hover:text-purple-300 transition"
-                  title="Load pricing / strategy template"
-                >
-                  💼 Business Plan
-                </button>
-              </div>
+        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+          {/* LEFT COLUMN: NOTES SIDEBAR */}
+          <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg flex flex-col h-[750px]">
+            <div className="flex items-center justify-between border-b border-slate-900 pb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Pages</h3>
+              <button
+                type="button"
+                onClick={handleCreateNewNote}
+                className="rounded-lg bg-purple-600/20 border border-purple-500/35 hover:bg-purple-600/30 px-2 py-1 text-[10px] font-bold text-purple-300 transition"
+              >
+                + Create
+              </button>
             </div>
 
-            <form onSubmit={handleCreateNote} className="space-y-4">
-              <label className="block text-sm text-slate-300 font-semibold">
-                Note Title
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  placeholder="e.g. Microservices Architecture Design"
-                />
-              </label>
-
-              <label className="block text-sm text-slate-300 font-semibold">
-                Topic / Category Area
-                <input
-                  list="note-subject-suggestions"
-                  required
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  placeholder="Select or type a topic (e.g. System Design)"
-                />
-                <datalist id="note-subject-suggestions">
-                  {subjectSuggestions.map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
-              </label>
-
-              <label className="block text-sm text-slate-300 font-semibold">
-                Note Contents (Markdown compatible)
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={12}
-                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono"
-                  placeholder="e.g. Define API gateway middleware routing controls..."
-                />
-              </label>
-
-              <div className="flex gap-2">
+            {/* Search Input */}
+            <div className="relative">
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-900 pl-3 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                placeholder="Search notes..."
+              />
+              {searchQuery && (
                 <button
-                  type="button"
-                  onClick={() => handleLoadTemplate('clear')}
-                  className="rounded-2xl border border-slate-800 bg-slate-950 hover:bg-slate-900 px-4 py-3 text-sm font-semibold transition"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-xs text-slate-500 hover:text-slate-300"
                 >
-                  Clear
+                  ✕
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:from-purple-600 hover:to-indigo-700 shadow-lg shadow-purple-500/15"
-                >
-                  Save Note
-                </button>
-              </div>
-            </form>
-          </section>
+              )}
+            </div>
 
-          {/* Saved List block */}
-          <section className="space-y-6">
-            {/* Subject filters */}
-            <div className="flex flex-wrap gap-2">
-              {['All', ...uniqueSubjects].map((sub) => (
-                <button
-                  key={sub}
-                  type="button"
-                  onClick={() => setSelectedSubject(sub)}
-                  className={`rounded-full px-4 py-1.5 text-xs font-semibold border transition ${
-                    selectedSubject === sub
-                      ? 'bg-purple-600 border-purple-500 text-white'
-                      : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                  }`}
-                >
-                  {sub}
-                </button>
-              ))}
+            {/* Subject Filters */}
+            <div className="space-y-1">
+              <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Filter Topic</span>
+              <select
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+                className="w-full rounded-xl border border-slate-750 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+              >
+                <option value="All">All Topics</option>
+                {uniqueSubjects.map((sub) => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Note List Scroll Container */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 animate-fade-in">
+              {filteredNotes.length === 0 ? (
+                <div className="text-center text-xs text-slate-500 py-8 bg-slate-900/10 rounded-2xl border border-dashed border-slate-800">
+                  No notes found
+                </div>
+              ) : (
+                filteredNotes.map((note) => {
+                  const isActive = activeNoteId === note.id
+                  return (
+                    <div
+                      key={note.id}
+                      onClick={() => setActiveNoteId(note.id)}
+                      className={`group cursor-pointer rounded-2xl p-3 border transition flex items-center justify-between ${
+                        isActive
+                          ? 'bg-purple-950/40 border-purple-500/40 text-white'
+                          : 'border-transparent bg-slate-900/30 text-slate-300 hover:bg-slate-900/60 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="text-xs font-bold truncate">
+                          {note.title || 'Untitled Note'}
+                        </div>
+                        <div className="text-[9px] text-slate-500 truncate mt-0.5">
+                          {note.subject}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteNote(note.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-350 hover:bg-rose-500/20 transition-opacity"
+                        title="Delete Page"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  )
+                })
+              )}
             </div>
 
             {message && (
-              <div className="rounded-2xl border border-purple-500/20 bg-purple-950/30 p-4 text-sm text-purple-200 animate-fade-in">
+              <div className="rounded-xl border border-purple-500/20 bg-purple-950/30 p-2.5 text-[10px] text-purple-200 text-center animate-fade-in">
                 {message}
               </div>
             )}
+          </div>
 
-            {filteredNotes.length === 0 ? (
-              <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-8 text-center text-slate-500">
-                No notes found for this subject area.
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-[640px] overflow-y-auto pr-1">
-                {filteredNotes.map((note) => (
-                  <div key={note.id} className="rounded-3xl border border-slate-800 bg-slate-950/80 p-6 shadow-md hover:border-purple-500/15 transition relative group animate-fade-in">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
-                        {note.subject}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteNote(note.id)}
-                        className="opacity-0 group-hover:opacity-100 text-xs px-2.5 py-1 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-300 transition hover:bg-rose-500/20"
-                      >
-                        Delete
-                      </button>
+          {/* RIGHT COLUMN: WORKSPACE */}
+          <div className="h-[750px] animate-fade-in">
+            {(() => {
+              const activeNote = notes.find((n) => n.id === activeNoteId)
+              
+              if (!activeNote) {
+                return (
+                  <div className="flex flex-col items-center justify-center text-center p-8 rounded-3xl border border-slate-800 bg-slate-950/50 h-full space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-purple-900/20 border border-purple-500/20 flex items-center justify-center text-3xl">
+                      📓
                     </div>
-                    <h4 className="text-base font-bold text-slate-100 mb-2">{note.title}</h4>
-                    <div className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed font-sans prose prose-invert max-w-none">
-                      {note.content.split('\n').map((line, i) => {
-                        if (line.startsWith('###')) {
-                          return <h4 key={i} className="text-sm font-bold text-slate-100 mt-4 mb-2">{line.replace('###', '').trim()}</h4>
-                        }
-                        if (line.startsWith('-')) {
-                          return <li key={i} className="ml-4 list-disc text-slate-300">{line.replace('-', '').trim()}</li>
-                        }
-                        return <p key={i} className="my-1.5">{line}</p>
-                      })}
+                    <div className="max-w-md">
+                      <h3 className="text-base font-bold text-white">Lumina Knowledge Workspace</h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Select a document from the left list to begin writing product specs, system roadmaps, or notes.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCreateNewNote}
+                      className="rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-purple-500/15 hover:from-purple-600 hover:to-indigo-700 transition"
+                    >
+                      Create New Page
+                    </button>
+
+                    {/* Tip cards */}
+                    <div className="grid grid-cols-2 gap-4 max-w-lg mt-8 text-left">
+                      <div className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900/30">
+                        <span className="text-xs font-bold text-slate-300">💡 Pro Tip</span>
+                        <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                          Add ledger transactions inside your notes (e.g. <code>[earning: 10 | cat: Sale]</code>) and click Sync to sync with the Wealth Vault.
+                        </p>
+                      </div>
+                      <div className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900/30">
+                        <span className="text-xs font-bold text-slate-300">📝 Interactive checklists</span>
+                        <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                          Every document includes a sidebar task manager to track milestone checklist statuses automatically.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
+                )
+              }
+
+              // Compute Checklist details
+              const todos = activeNote.todos || []
+              const completedCount = todos.filter((t) => t.completed).length
+              const totalCount = todos.length
+              const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+
+              return (
+                <div className="flex flex-col h-full space-y-4">
+                  {/* Workspace Actions Toolbar */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-3xl border border-slate-800 bg-slate-950/90 shadow-md">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setActiveNoteId(null)}
+                        className="text-xs px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-355 hover:text-white transition"
+                      >
+                        ← Close
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSyncNoteVaults(activeNote)}
+                        className="text-[10px] font-bold px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-xl shadow shadow-purple-500/10 transition"
+                        title="Sync transactions and protein tracker data from this note to main vaults"
+                      >
+                        Sync Vaults ⚡
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 select-none text-[9px] font-bold">
+                      <span className="text-slate-500 uppercase tracking-wide mr-1">Load Template:</span>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadTemplate('website')}
+                        className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-slate-300 hover:text-purple-300 transition"
+                      >
+                        🌐 Web Plan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadTemplate('business')}
+                        className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-slate-300 hover:text-purple-300 transition"
+                      >
+                        💼 Business
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadTemplate('project')}
+                        className="rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/20 px-2 py-1 text-slate-300 hover:text-purple-300 transition"
+                      >
+                        📋 Roadmap
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Split Workspace Panels */}
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-0">
+                    {/* Document Panel */}
+                    <div className="xl:col-span-7 flex flex-col rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg min-h-0">
+                      {/* Title input */}
+                      <input
+                        value={activeNote.title || ''}
+                        onChange={(e) => updateNote(activeNote.id, { title: e.target.value })}
+                        className="w-full bg-transparent border-b border-transparent hover:border-slate-800 focus:border-purple-500/30 text-xl font-black text-white focus:outline-none py-1 mb-2"
+                        placeholder="Untitled Note"
+                      />
+
+                      {/* Subject dropdown */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">Topic:</span>
+                        <input
+                          list="note-subject-suggestions-workspace"
+                          value={activeNote.subject || ''}
+                          onChange={(e) => updateNote(activeNote.id, { subject: e.target.value })}
+                          className="bg-slate-900 border border-slate-850 hover:border-slate-700 text-xs px-2.5 py-1 rounded-xl text-slate-355 focus:outline-none focus:border-purple-500"
+                          placeholder="Select or type a topic"
+                        />
+                        <datalist id="note-subject-suggestions-workspace">
+                          {subjectSuggestions.map((s) => (
+                            <option key={s} value={s} />
+                          ))}
+                        </datalist>
+                      </div>
+
+                      {/* Document Draft content */}
+                      <textarea
+                        value={activeNote.content || ''}
+                        onChange={(e) => updateNote(activeNote.id, { content: e.target.value })}
+                        className="w-full flex-1 mt-4 bg-transparent resize-none border-0 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none leading-relaxed overflow-y-auto pr-1 border-t border-slate-900 pt-3"
+                        placeholder="Write about the project planning, system designs, or details (Supports basic Markdown tags like ### headers and - bullet lists)..."
+                      />
+                    </div>
+
+                    {/* Interactive Checklist Panel */}
+                    <div className="xl:col-span-5 flex flex-col rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg min-h-0">
+                      <div className="border-b border-slate-900 pb-3 mb-3 flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Roadmap Checklist</h4>
+                          <span className="text-[9px] text-slate-500 mt-0.5">Toggle milestones and project checklist items</span>
+                        </div>
+                        {totalCount > 0 && (
+                          <span className="text-[10px] bg-slate-900 border border-slate-855 px-2 py-0.5 rounded-full text-slate-400 font-bold">
+                            {completedCount}/{totalCount} Completed
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Progress Bar */}
+                      {totalCount > 0 && (
+                        <div className="mb-4 space-y-1.5 select-none">
+                          <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 transition-all duration-300"
+                              style={{ width: `${progressPercent}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between items-center text-[9px] text-slate-500 font-bold">
+                            <span>PROGRESS</span>
+                            <span>{progressPercent}%</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Add new milestone task form */}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          handleAddTodo(activeNote.id)
+                        }}
+                        className="flex gap-2 mb-4"
+                      >
+                        <input
+                          value={newTodoText}
+                          onChange={(e) => setNewTodoText(e.target.value)}
+                          className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                          placeholder="Add a milestone task..."
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-xl bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/30 text-purple-300 font-bold px-3 py-2 text-xs transition"
+                        >
+                          +
+                        </button>
+                      </form>
+
+                      {/* Task Checklist Items */}
+                      <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                        {todos.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center text-center py-16 text-slate-500 space-y-2 bg-slate-900/10 border border-dashed border-slate-850 rounded-2xl">
+                            <span className="text-2xl">📋</span>
+                            <p className="text-[10px] max-w-[180px] mx-auto leading-relaxed">No milestones or checklist tasks added to this page yet.</p>
+                          </div>
+                        ) : (
+                          todos.map((todo) => (
+                            <div
+                              key={todo.id}
+                              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-900 bg-slate-900/20 group hover:border-slate-800 hover:bg-slate-900/40 transition"
+                            >
+                              <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={todo.completed}
+                                  onChange={() => handleToggleTodo(activeNote.id, todo.id)}
+                                  className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 border-slate-700 bg-slate-900 cursor-pointer"
+                                />
+                                <span className={`text-xs truncate font-medium ${
+                                  todo.completed ? 'line-through text-slate-500' : 'text-slate-200'
+                                }`}>
+                                  {todo.text}
+                                </span>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTodo(activeNote.id, todo.id)}
+                                className="opacity-0 group-hover:opacity-100 text-[10px] text-rose-455 hover:text-rose-300 px-1.5 py-0.5 rounded transition"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
         </div>
       ) : (
         // --- VOCAB & PHRASE HUB VIEW ---
