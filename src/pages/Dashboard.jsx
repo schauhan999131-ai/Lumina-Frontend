@@ -82,7 +82,7 @@ export default function Dashboard() {
 
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [chartRange, setChartRange] = useState('daily') // 'daily', 'monthly', 'yearly'
+  const [chartRange, setChartRange] = useState('daily') // 'daily', 'weekly', 'monthly', 'yearly'
 
   // Task Filter State
   const [taskSearch, setTaskSearch] = useState('')
@@ -410,6 +410,7 @@ export default function Dashboard() {
     
     let rawData = []
     if (chartRange === 'daily') rawData = taskStats.daily || []
+    else if (chartRange === 'weekly') rawData = taskStats.weekly || []
     else if (chartRange === 'monthly') rawData = taskStats.monthly || []
     else if (chartRange === 'yearly') rawData = taskStats.yearly || []
     
@@ -419,6 +420,33 @@ export default function Dashboard() {
         d.setDate(d.getDate() - (6 - index))
         const dateKey = d.toDateString()
         const pillarsCount = history[dateKey] || 0
+        
+        return {
+          ...item,
+          tasksCompleted: item.count,
+          pillarsCompleted: pillarsCount
+        }
+      })
+    }
+
+    if (chartRange === 'weekly' && rawData.length > 0) {
+      return rawData.map((item, index) => {
+        const now = new Date()
+        const start = new Date(now)
+        start.setDate(now.getDate() - ((3 - index + 1) * 7 - 1))
+        start.setHours(0, 0, 0, 0)
+        
+        const end = new Date(now)
+        end.setDate(now.getDate() - (3 - index) * 7)
+        end.setHours(23, 59, 59, 999)
+        
+        let pillarsCount = 0
+        const checkDate = new Date(start)
+        while (checkDate <= end) {
+          const key = checkDate.toDateString()
+          pillarsCount += (history[key] || 0)
+          checkDate.setDate(checkDate.getDate() + 1)
+        }
         
         return {
           ...item,
@@ -628,6 +656,7 @@ export default function Dashboard() {
             <div className="flex rounded-xl border border-slate-800/80 bg-slate-950 p-1 self-start select-none">
               {[
                 { range: 'daily', label: 'Daily' },
+                { range: 'weekly', label: 'Weekly' },
                 { range: 'monthly', label: 'Monthly' },
                 { range: 'yearly', label: 'Yearly' }
               ].map((btn) => (

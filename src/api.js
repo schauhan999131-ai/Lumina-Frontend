@@ -164,4 +164,26 @@ export const updateTimerState = (timerData) =>
     body: JSON.stringify(timerData),
   })
 
+// Notes API
+export const fetchNotes = () =>
+  request('/api/notes')
+
+export const createNote = (noteData) =>
+  request('/api/notes', {
+    method: 'POST',
+    body: JSON.stringify(noteData),
+  })
+
+export const updateNote = (noteId, updateData) =>
+  request(`/api/notes/${encodeURIComponent(noteId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(updateData),
+  })
+
+export const deleteNote = (noteId) =>
+  request(`/api/notes/${encodeURIComponent(noteId)}`, {
+    method: 'DELETE',
+  })
+
+
 

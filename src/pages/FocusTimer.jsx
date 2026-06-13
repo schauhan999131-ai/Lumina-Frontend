@@ -1,5 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend
+} from 'recharts'
 import { getTimerState, updateTimerState } from '../api'
+
+const FocusChartTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-xl border border-slate-800 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-md space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500 font-extrabold">{label}</p>
+        {payload.map((item, idx) => (
+          <p key={idx} className="text-xs font-black flex items-center gap-1.5" style={{ color: item.stroke }}>
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: item.stroke }}></span>
+            {item.name}: {item.value} mins
+          </p>
+        ))}
+      </div>
+    )
+  }
+  return null
+}
 
 export default function FocusTimer() {
   // Configurable durations in minutes (persisted in localStorage)
@@ -71,6 +98,156 @@ export default function FocusTimer() {
     const saved = localStorage.getItem('study_focus_history')
     return saved ? JSON.parse(saved) : []
   })
+
+  const [chartRange, setChartRange] = useState('daily') // 'daily' | 'weekly' | 'monthly' | 'yearly'
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
+  const [toast, setToast] = useState(null)
+
+  // Auto-dismiss toast notification after 5 seconds
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => {
+      setToast(null)
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  const triggerNotification = (msg) => {
+    setToast(msg)
+    try {
+      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav')
+      audio.volume = 0.15
+      audio.play().catch(() => {})
+    } catch (e) {}
+  }
+
+  const chartData = useMemo(() => {
+    const workSessions = history.filter(item => item.type === 'work')
+    const breakSessions = history.filter(item => item.type === 'short' || item.type === 'long')
+
+    if (chartRange === 'daily') {
+      const dailyData = []
+      const targetDateStr = selectedDate.toDateString()
+      for (let hour = 0; hour < 24; hour++) {
+        const ampm = hour >= 12 ? 'PM' : 'AM'
+        const displayHour = hour % 12 === 0 ? 12 : hour % 12
+        const label = `${displayHour} ${ampm}`
+        
+        const focusMins = workSessions
+          .filter(item => {
+            if (!item.timestamp) return false
+            const d = new Date(item.timestamp)
+            return d.toDateString() === targetDateStr && d.getHours() === hour
+          })
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+
+        const breakMins = breakSessions
+          .filter(item => {
+            if (!item.timestamp) return false
+            const d = new Date(item.timestamp)
+            return d.toDateString() === targetDateStr && d.getHours() === hour
+          })
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+          
+        dailyData.push({ label, focus: focusMins, break: breakMins })
+      }
+      return dailyData
+    }
+
+    if (chartRange === 'weekly') {
+      const weeklyData = []
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date()
+        d.setDate(d.getDate() - i)
+        const dayName = d.toLocaleDateString('en-US', { weekday: 'short' })
+        const dateString = d.toDateString()
+        
+        const focusMins = workSessions
+          .filter(item => item.timestamp && new Date(item.timestamp).toDateString() === dateString)
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+
+        const breakMins = breakSessions
+          .filter(item => item.timestamp && new Date(item.timestamp).toDateString() === dateString)
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+          
+        weeklyData.push({ label: dayName, focus: focusMins, break: breakMins, dateString })
+      }
+      return weeklyData
+    }
+
+    if (chartRange === 'monthly') {
+      const monthlyData = []
+      const now = new Date()
+      for (let i = 3; i >= 0; i--) {
+        const start = new Date(now)
+        start.setDate(now.getDate() - ((i + 1) * 7 - 1))
+        start.setHours(0, 0, 0, 0)
+        
+        const end = new Date(now)
+        end.setDate(now.getDate() - i * 7)
+        end.setHours(23, 59, 59, 999)
+        
+        const label = i === 0 ? 'This Wk' : `Wk -${i}`
+        
+        const focusMins = workSessions
+          .filter(item => {
+            if (!item.timestamp) return false
+            const itemDate = new Date(item.timestamp)
+            return itemDate >= start && itemDate <= end
+          })
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+
+        const breakMins = breakSessions
+          .filter(item => {
+            if (!item.timestamp) return false
+            const itemDate = new Date(item.timestamp)
+            return itemDate >= start && itemDate <= end
+          })
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+          
+        monthlyData.push({ label, focus: focusMins, break: breakMins })
+      }
+      return monthlyData
+    }
+
+    if (chartRange === 'yearly') {
+      const yearlyData = []
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date()
+        d.setDate(1) // Avoid day-of-month rollover bug
+        d.setMonth(d.getMonth() - i)
+        const monthName = d.toLocaleDateString('en-US', { month: 'short' })
+        const month = d.getMonth()
+        const year = d.getFullYear()
+        
+        const focusMins = workSessions
+          .filter(item => {
+            if (!item.timestamp) return false
+            const itemDate = new Date(item.timestamp)
+            return itemDate.getMonth() === month && itemDate.getFullYear() === year
+          })
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+
+        const breakMins = breakSessions
+          .filter(item => {
+            if (!item.timestamp) return false
+            const itemDate = new Date(item.timestamp)
+            return itemDate.getMonth() === month && itemDate.getFullYear() === year
+          })
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+          
+        yearlyData.push({ label: monthName, focus: focusMins, break: breakMins })
+      }
+      return yearlyData
+    }
+
+    return []
+  }, [history, chartRange, selectedDate])
+
+  const todayHistory = useMemo(() => {
+    const todayStr = new Date().toDateString()
+    return history.filter(item => item.timestamp && new Date(item.timestamp).toDateString() === todayStr)
+  }, [history])
 
   // Save states to LocalStorage
   useEffect(() => {
@@ -183,7 +360,7 @@ export default function FocusTimer() {
       setFocusMinutes(newMins)
       setHistory(newHistory)
 
-      alert('🎯 Focus session completed! Time for a short break.')
+      triggerNotification('🎯 Focus session completed! Time for a short break.')
       
       nextMode = 'short'
       setMode('short')
@@ -205,7 +382,7 @@ export default function FocusTimer() {
       newHistory = [historyEntry, ...history]
       setHistory(newHistory)
 
-      alert('☀️ Break is over! Ready to focus?')
+      triggerNotification('☀️ Break is over! Ready to focus?')
 
       nextMode = 'work'
       setMode('work')
@@ -447,6 +624,23 @@ export default function FocusTimer() {
     return `${timeStr} (${dateStr})`
   }
 
+  const handlePointClick = (data) => {
+    const payload = data?.payload || data
+    if (payload && payload.dateString) {
+      setSelectedDate(new Date(payload.dateString))
+      setChartRange('daily')
+    }
+  }
+
+  const chartTitleSuffix = useMemo(() => {
+    if (chartRange !== 'daily') return ''
+    const todayStr = new Date().toDateString()
+    if (selectedDate.toDateString() === todayStr) {
+      return ' — Today'
+    }
+    return ` — ${selectedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+  }, [chartRange, selectedDate])
+
   // Visual circular progress calculations
   const totalSeconds = mode === 'work' ? workDuration * 60 : mode === 'short' ? shortDuration * 60 : longDuration * 60
   const progressPercent = ((totalSeconds - timeLeft) / totalSeconds) * 100
@@ -455,7 +649,27 @@ export default function FocusTimer() {
   const strokeDashoffset = circumference - (progressPercent / 100) * circumference
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-20 right-6 z-50 animate-slide-in-right max-w-sm rounded-2xl border border-purple-500/30 bg-slate-950/95 p-4 shadow-2xl backdrop-blur-md flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-purple-500/10 text-purple-400 font-bold text-lg select-none">
+            {toast.includes('Break') ? '☀️' : '🎯'}
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-slate-200">{toast}</p>
+            <span className="block text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Notification</span>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => setToast(null)} 
+            className="text-slate-500 hover:text-slate-350 text-xs px-1 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg shadow-slate-950/20">
         <h2 className="text-lg font-semibold text-slate-100">Pomodoro Focus Timer</h2>
@@ -663,7 +877,7 @@ export default function FocusTimer() {
                 <span>📋</span>
                 <span>Focus History Log</span>
               </h3>
-              {history.length > 0 && (
+              {todayHistory.length > 0 && (
                 <button
                   type="button"
                   onClick={clearHistory}
@@ -675,13 +889,13 @@ export default function FocusTimer() {
             </div>
 
             <div className="flex-1 mt-3 overflow-y-auto max-h-[220px] space-y-2 pr-1">
-              {history.length === 0 ? (
+              {todayHistory.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-4">
                   <span className="text-2xl opacity-30 select-none">⏳</span>
-                  <p className="text-xs text-slate-500 mt-2 font-medium">No sessions logged yet. Start working to save progress!</p>
+                  <p className="text-xs text-slate-500 mt-2 font-medium">No sessions logged today. Start working to save progress!</p>
                 </div>
               ) : (
-                history.map((item) => (
+                todayHistory.map((item) => (
                   <div key={item.id} className="flex items-center justify-between bg-slate-950/50 border border-slate-850 p-3 rounded-2xl text-xs hover:border-purple-500/10 transition duration-150 animate-fade-in">
                     <div className="flex items-center gap-2.5">
                       <span className="text-base select-none">
@@ -708,6 +922,170 @@ export default function FocusTimer() {
           </section>
         </div>
       </div>
+
+      {/* Focus Analytics Chart Section */}
+      <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg shadow-slate-950/20 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-850 pb-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+              <span>📈</span>
+              <span>Focus Analytics Trend{chartTitleSuffix}</span>
+            </h3>
+            <p className="text-[10px] text-slate-500 mt-0.5">Visualize your deep work sessions and productivity intervals</p>
+          </div>
+          
+          {/* Chart Range Selector Toggles */}
+          <div className="flex bg-slate-900 border border-slate-850 p-1 rounded-xl select-none self-start sm:self-auto">
+            {[
+              { id: 'daily', label: 'Daily' },
+              { id: 'weekly', label: 'Weekly' },
+              { id: 'monthly', label: 'Monthly' },
+              { id: 'yearly', label: 'Yearly' },
+            ].map((range) => (
+              <button
+                key={range.id}
+                type="button"
+                onClick={() => {
+                  setChartRange(range.id)
+                  if (range.id === 'daily') {
+                    setSelectedDate(new Date())
+                  }
+                }}
+                className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition duration-150 cursor-pointer ${
+                  chartRange === range.id
+                    ? 'bg-purple-600/20 border border-purple-500/35 text-purple-300 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Recharts Area Chart */}
+        <div className="w-full h-[260px] relative select-none">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart 
+              data={chartData} 
+              margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
+              onClick={(state) => {
+                if (state && state.activeTooltipIndex !== undefined) {
+                  const clickedIndex = state.activeTooltipIndex
+                  if (clickedIndex >= 0 && clickedIndex < chartData.length) {
+                    const clickedPayload = chartData[clickedIndex]
+                    if (clickedPayload.dateString) {
+                      setSelectedDate(new Date(clickedPayload.dateString))
+                      setChartRange('daily')
+                    }
+                  }
+                }
+              }}
+              style={{ cursor: chartRange === 'weekly' ? 'pointer' : 'default' }}
+            >
+              <defs>
+                <linearGradient id="focusGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#a855f7" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#a855f7" stopOpacity={0.0} />
+                </linearGradient>
+                <linearGradient id="breakGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.0} />
+                </linearGradient>
+                <filter id="neonGlowFocus" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="4" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+              
+              <XAxis 
+                dataKey="label" 
+                stroke="#475569" 
+                fontSize={10}
+                fontWeight={600}
+                tickLine={false} 
+                axisLine={false} 
+                dy={8}
+                ticks={chartRange === 'daily' ? ['12 AM', '3 AM', '6 AM', '9 AM', '12 PM', '3 PM', '6 PM', '9 PM'] : undefined}
+                onClick={(e) => {
+                  if (e && e.value) {
+                    const clickedPayload = chartData.find(item => item.label === e.value)
+                    if (clickedPayload && clickedPayload.dateString) {
+                      setSelectedDate(new Date(clickedPayload.dateString))
+                      setChartRange('daily')
+                    }
+                  }
+                }}
+                style={{ cursor: chartRange === 'weekly' ? 'pointer' : 'default' }}
+              />
+              
+              <YAxis 
+                stroke="#475569" 
+                fontSize={10}
+                fontWeight={600}
+                tickLine={false} 
+                axisLine={false} 
+                allowDecimals={false}
+                dx={-8}
+                unit="m"
+              />
+              
+              <Tooltip content={<FocusChartTooltip />} cursor={{ stroke: 'var(--chart-cursor)', strokeWidth: 1 }} />
+              
+              <Legend 
+                verticalAlign="top" 
+                height={36} 
+                iconType="circle"
+                iconSize={8}
+                wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', color: '#94a3b8' }}
+              />
+
+              <Area 
+                type="monotone" 
+                name="Focus Minutes"
+                dataKey="focus" 
+                stroke="#a855f7" 
+                fill="url(#focusGradient)" 
+                strokeWidth={3} 
+                filter="url(#neonGlowFocus)"
+                activeDot={{ 
+                  r: 5, 
+                  stroke: 'var(--chart-dot-stroke)', 
+                  strokeWidth: 2, 
+                  fill: '#a855f7',
+                  onClick: (e, payload) => handlePointClick(payload)
+                }}
+                onClick={handlePointClick}
+                style={{ cursor: chartRange === 'weekly' ? 'pointer' : 'default' }}
+              />
+
+              <Area 
+                type="monotone" 
+                name="Break Minutes"
+                dataKey="break" 
+                stroke="#0ea5e9" 
+                fill="url(#breakGradient)" 
+                strokeWidth={3} 
+                filter="url(#neonGlowFocus)"
+                activeDot={{ 
+                  r: 5, 
+                  stroke: 'var(--chart-dot-stroke)', 
+                  strokeWidth: 2, 
+                  fill: '#0ea5e9',
+                  onClick: (e, payload) => handlePointClick(payload)
+                }}
+                onClick={handlePointClick}
+                style={{ cursor: chartRange === 'weekly' ? 'pointer' : 'default' }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
     </div>
   )
 }

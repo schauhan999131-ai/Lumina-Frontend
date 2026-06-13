@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useAppStore } from '../store'
+import * as api from '../api'
 
 const initialNotes = [
   { id: 1, title: 'Clean Architecture Patterns', subject: 'Software Engineering', content: '### 🌐 Clean Architecture Outline\nConcentric layers:\n- **Entities**: Core business objects\n- **Use Cases**: App-specific rules\n- **Interface Adapters**: Controllers, presenters, gateways\n- **Frameworks & Drivers**: Web, DB, UI.\n\nMaintains strict decoupling from database drivers and UI components.' },
@@ -801,10 +802,8 @@ export default function StudyNotes() {
   const [activeTab, setActiveTab] = useState('notes')
 
   // --- KNOWLEDGE NOTES STATE ---
-  const [notes, setNotes] = useState(() => {
-    const saved = localStorage.getItem('lumina_notes')
-    return saved ? JSON.parse(saved) : initialNotes
-  })
+  const [notes, setNotes] = useState([])
+  const [notesLoading, setNotesLoading] = useState(true)
   const [activeNoteId, setActiveNoteId] = useState(null)
   const [workspaceMode, setWorkspaceMode] = useState('edit') // 'edit' or 'preview'
   const [workspaceSubTab, setWorkspaceSubTab] = useState('doc') // 'doc' or 'checklist'
@@ -815,6 +814,62 @@ export default function StudyNotes() {
     setWorkspaceMode('edit')
     setWorkspaceSubTab('doc')
   }, [activeNoteId])
+
+  // Fetch and migrate notes on mount
+  useEffect(() => {
+    const loadNotesAndMigrate = async () => {
+      setNotesLoading(true)
+      try {
+        // 1. Fetch notes from the database
+        const dbRes = await api.fetchNotes()
+        let currentNotes = dbRes.data || []
+
+        // 2. Check for legacy localStorage notes to migrate
+        const localSaved = localStorage.getItem('lumina_notes')
+        if (localSaved) {
+          try {
+            const localNotes = JSON.parse(localSaved)
+            if (localNotes && localNotes.length > 0) {
+              console.log('Migrating local notes to database...', localNotes)
+              // API supports batch array POST
+              const migratedRes = await api.createNote(localNotes)
+              const migratedNotes = migratedRes.data || []
+              currentNotes = [...migratedNotes, ...currentNotes]
+            }
+          } catch (e) {
+            console.error('Error parsing local notes for migration:', e)
+          }
+          localStorage.removeItem('lumina_notes')
+        }
+
+        // 3. Fallback to initial notes if DB is empty
+        if (currentNotes.length === 0) {
+          const initRes = await api.createNote(initialNotes)
+          currentNotes = initRes.data || []
+        }
+
+        setNotes(currentNotes)
+
+        // 4. Select the first note automatically
+        if (currentNotes.length > 0) {
+          setActiveNoteId((prevId) => {
+            if (prevId && currentNotes.some((n) => n._id === prevId || n.id === prevId)) {
+              const found = currentNotes.find((n) => n.id === prevId || n._id === prevId)
+              return found._id || found.id
+            }
+            return currentNotes[0]._id || currentNotes[0].id
+          })
+        }
+      } catch (err) {
+        console.error('Error loading notes:', err)
+        setMessage('Error loading notes from database.')
+      } finally {
+        setNotesLoading(false)
+      }
+    }
+
+    loadNotesAndMigrate()
+  }, [])
 
   // --- CODING ARENA STATE ---
   const [codingLanguage, setCodingLanguage] = useState('javascript') // 'javascript' or 'rust'
@@ -1136,47 +1191,69 @@ export default function StudyNotes() {
   }, [notes])
 
   // --- KNOWLEDGE NOTES FUNCTIONS ---
-  const updateNote = (id, updatedFields) => {
+  const updateNote = async (id, updatedFields) => {
+    // Instantly update local UI state for snappy interaction
     const updatedNotes = notes.map((note) => {
-      if (note.id === id) {
+      if (note._id === id || note.id === id) {
         return { ...note, ...updatedFields }
       }
       return note
     })
     setNotes(updatedNotes)
-    localStorage.setItem('lumina_notes', JSON.stringify(updatedNotes))
+
+    try {
+      await api.updateNote(id, updatedFields)
+    } catch (err) {
+      console.error('Error saving note updates:', err)
+    }
   }
 
-  const handleCreateNewNote = () => {
-    const newNote = {
-      id: Date.now(),
-      title: 'Untitled Note',
-      subject: 'Software Engineering',
-      content: '',
-      todos: []
+  const handleCreateNewNote = async () => {
+    try {
+      const newNoteData = {
+        title: 'Untitled Note',
+        subject: 'Software Engineering',
+        content: '',
+        todos: [],
+        images: []
+      }
+      const res = await api.createNote(newNoteData)
+      const createdNote = res.data
+      setNotes([createdNote, ...notes])
+      setActiveNoteId(createdNote._id)
+      setMessage('New note created!')
+      setTimeout(() => setMessage(null), 2000)
+    } catch (err) {
+      console.error('Error creating note:', err)
+      setMessage('Failed to create new note.')
+      setTimeout(() => setMessage(null), 3000)
     }
-    const updatedNotes = [newNote, ...notes]
-    setNotes(updatedNotes)
-    localStorage.setItem('lumina_notes', JSON.stringify(updatedNotes))
-    setActiveNoteId(newNote.id)
-    setMessage('New note created!')
-    setTimeout(() => setMessage(null), 2000)
   }
 
-  const handleDeleteNote = (id) => {
-    const updatedNotes = notes.filter((n) => n.id !== id)
-    setNotes(updatedNotes)
-    localStorage.setItem('lumina_notes', JSON.stringify(updatedNotes))
-    
-    parseNoteWealth(id, '').catch((err) => console.error(err))
-    parseNoteHealth(id, '').catch((err) => console.error(err))
+  const handleDeleteNote = async (id) => {
+    try {
+      await api.deleteNote(id)
+      const updatedNotes = notes.filter((n) => n._id !== id && n.id !== id)
+      setNotes(updatedNotes)
+      
+      parseNoteWealth(id, '').catch((err) => console.error(err))
+      parseNoteHealth(id, '').catch((err) => console.error(err))
 
-    if (activeNoteId === id) {
-      setActiveNoteId(null)
+      if (activeNoteId === id) {
+        if (updatedNotes.length > 0) {
+          setActiveNoteId(updatedNotes[0]._id || updatedNotes[0].id)
+        } else {
+          setActiveNoteId(null)
+        }
+      }
+
+      setMessage('Note deleted.')
+      setTimeout(() => setMessage(null), 3000)
+    } catch (err) {
+      console.error('Error deleting note:', err)
+      setMessage('Failed to delete note.')
+      setTimeout(() => setMessage(null), 3000)
     }
-
-    setMessage('Note deleted.')
-    setTimeout(() => setMessage(null), 3000)
   }
 
   const handleLoadTemplate = (type) => {
@@ -1208,8 +1285,8 @@ export default function StudyNotes() {
 
   const handleSyncNoteVaults = (note) => {
     if (!note) return
-    parseNoteWealth(note.id, note.content || '')
-      .then(() => parseNoteHealth(note.id, note.content || ''))
+    parseNoteWealth(note._id || note.id, note.content || '')
+      .then(() => parseNoteHealth(note._id || note.id, note.content || ''))
       .then(() => {
         setMessage('Note synced to Wealth & Health Vaults!')
         setTimeout(() => setMessage(null), 3000)
@@ -1224,11 +1301,11 @@ export default function StudyNotes() {
   // Checklist helper functions
   const handleAddTodo = (noteId) => {
     if (!newTodoText.trim()) return
-    const activeNote = notes.find((n) => n.id === noteId)
+    const activeNote = notes.find((n) => n._id === noteId || n.id === noteId)
     if (!activeNote) return
 
     const newTodo = {
-      id: Date.now(),
+      id: Date.now().toString(),
       text: newTodoText.trim(),
       completed: false
     }
@@ -1239,7 +1316,7 @@ export default function StudyNotes() {
   }
 
   const handleToggleTodo = (noteId, todoId) => {
-    const activeNote = notes.find((n) => n.id === noteId)
+    const activeNote = notes.find((n) => n._id === noteId || n.id === noteId)
     if (!activeNote) return
 
     const updatedTodos = (activeNote.todos || []).map((t) =>
@@ -1249,7 +1326,7 @@ export default function StudyNotes() {
   }
 
   const handleDeleteTodo = (noteId, todoId) => {
-    const activeNote = notes.find((n) => n.id === noteId)
+    const activeNote = notes.find((n) => n._id === noteId || n.id === noteId)
     if (!activeNote) return
 
     const updatedTodos = (activeNote.todos || []).filter((t) => t.id !== todoId)
@@ -1424,7 +1501,7 @@ export default function StudyNotes() {
     const imageItem = items.find(item => item.type.startsWith('image/'))
     if (!imageItem) return
     e.preventDefault()
-    const note = notes.find(n => n.id === noteId)
+    const note = notes.find(n => n._id === noteId || n.id === noteId)
     if (!note) return
     const blob = imageItem.getAsFile()
     const reader = new FileReader()
@@ -1579,17 +1656,22 @@ export default function StudyNotes() {
 
             {/* Note List Scroll Container */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 animate-fade-in">
-              {filteredNotes.length === 0 ? (
+              {notesLoading ? (
+                <div className="text-center text-xs text-slate-500 py-12 bg-slate-900/10 rounded-2xl border border-dashed border-slate-800 space-y-2 select-none">
+                  <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <span>Syncing with Database...</span>
+                </div>
+              ) : filteredNotes.length === 0 ? (
                 <div className="text-center text-xs text-slate-500 py-8 bg-slate-900/10 rounded-2xl border border-dashed border-slate-800">
                   No notes found
                 </div>
               ) : (
                 filteredNotes.map((note) => {
-                  const isActive = activeNoteId === note.id
+                  const isActive = activeNoteId === note._id || activeNoteId === note.id
                   return (
                     <div
-                      key={note.id}
-                      onClick={() => setActiveNoteId(note.id)}
+                      key={note._id || note.id}
+                      onClick={() => setActiveNoteId(note._id || note.id)}
                       className={`group cursor-pointer rounded-2xl p-3 border transition flex items-center justify-between ${
                         isActive
                           ? 'bg-purple-950/40 border-purple-500/40 text-white'
@@ -1608,7 +1690,7 @@ export default function StudyNotes() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          handleDeleteNote(note.id)
+                          handleDeleteNote(note._id || note.id)
                         }}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-350 hover:bg-rose-500/20 transition-opacity"
                         title="Delete Page"
@@ -1631,7 +1713,7 @@ export default function StudyNotes() {
           {/* RIGHT COLUMN: WORKSPACE */}
           <div className={`h-auto lg:h-[750px] animate-fade-in ${activeNoteId !== null ? 'block' : 'hidden lg:block'}`}>
             {(() => {
-              const activeNote = notes.find((n) => n.id === activeNoteId)
+              const activeNote = notes.find((n) => n._id === activeNoteId || n.id === activeNoteId)
               
               if (!activeNote) {
                 return (
