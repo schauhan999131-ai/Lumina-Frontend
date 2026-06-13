@@ -220,7 +220,7 @@ export default function Tasks() {
         key={task._id} 
         className={`p-4 rounded-2xl bg-slate-900 border transition-all duration-200 group flex flex-col justify-between gap-4 ${
           isCompleted 
-            ? 'border-slate-950 opacity-60' 
+            ? 'border-slate-850 opacity-60' 
             : 'border-slate-800/80 hover:border-purple-500/30'
         }`}
       >
@@ -247,7 +247,7 @@ export default function Tasks() {
         </div>
 
         {/* Status Toggle Button Bar */}
-        <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-950 p-1 border border-slate-900/50 select-none">
+        <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-950 p-1 border border-slate-850/50 select-none">
           {[
             { statusName: 'Not Started', label: 'Start', color: 'text-slate-400 hover:text-slate-200 border-transparent', activeColor: 'bg-slate-800 text-slate-100 border-slate-700' },
             { statusName: 'Pending', label: 'Pending', color: 'text-amber-500/60 hover:text-amber-400 border-transparent', activeColor: 'bg-amber-500/15 text-amber-300 border-amber-500/20' },
@@ -377,8 +377,8 @@ export default function Tasks() {
           ) : (
             <div className="grid gap-6 lg:grid-cols-3 animate-fade-in">
               {/* Column 1: Daily Planning */}
-              <div className="space-y-4 rounded-3xl border border-slate-900 bg-slate-950/50 p-5 min-h-[400px] flex flex-col">
-                <div className="flex items-center justify-between border-b border-slate-900 pb-3 mb-2">
+              <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/50 p-5 min-h-[400px] flex flex-col">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-2">
                   <h4 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-2">
                     <span>📆</span> Daily Tasks
                   </h4>
@@ -397,8 +397,8 @@ export default function Tasks() {
               </div>
 
               {/* Column 2: Weekly Planning */}
-              <div className="space-y-4 rounded-3xl border border-slate-900 bg-slate-950/50 p-5 min-h-[400px] flex flex-col">
-                <div className="flex items-center justify-between border-b border-slate-900 pb-3 mb-2">
+              <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/50 p-5 min-h-[400px] flex flex-col">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-2">
                   <h4 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-2">
                     <span>📅</span> Weekly Goals
                   </h4>
@@ -417,8 +417,8 @@ export default function Tasks() {
               </div>
 
               {/* Column 3: Yearly Planning */}
-              <div className="space-y-4 rounded-3xl border border-slate-900 bg-slate-950/50 p-5 min-h-[400px] flex flex-col">
-                <div className="flex items-center justify-between border-b border-slate-900 pb-3 mb-2">
+              <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/50 p-5 min-h-[400px] flex flex-col">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-2">
                   <h4 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-2">
                     <span>🏆</span> Yearly Milestones
                   </h4>
@@ -554,7 +554,7 @@ export default function Tasks() {
                     <span className="text-[10px] uppercase font-extrabold tracking-widest text-indigo-400">Topology Map</span>
                     <span className="text-[10px] font-bold text-slate-500">Stack: {modeledProject.techStack}</span>
                   </div>
-                  <h4 className="text-base font-black text-white leading-none">{modeledProject.name}</h4>
+                  <h4 className="text-base font-black text-slate-100 leading-none">{modeledProject.name}</h4>
 
                   {/* Flow Map Blocks */}
                   <div className="grid gap-4 md:grid-cols-3 items-stretch relative mt-4">

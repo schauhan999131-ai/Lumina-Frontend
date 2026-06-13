@@ -386,7 +386,7 @@ export default function WealthVault() {
         <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-gradient-to-br from-emerald-500/10 via-teal-600/5 to-transparent rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
         
         <div className="space-y-3 z-10 max-w-lg">
-          <h2 className="text-2xl font-bold text-white tracking-tight">Lumina Wealth Vault 💵</h2>
+          <h2 className="text-2xl font-bold text-slate-100 tracking-tight">Lumina Wealth Vault 💵</h2>
           <p className="text-slate-400 text-sm leading-relaxed">
             Monitor earnings velocity, track target micro-expenses, and accelerate your hourly developer value index.
           </p>
@@ -470,7 +470,7 @@ export default function WealthVault() {
         <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg flex flex-col justify-between min-h-[380px]">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Ledger Velocity Trend</h3>
+              <h3 className="text-base font-bold text-slate-100 tracking-tight">Ledger Velocity Trend</h3>
               <p className="text-xs text-slate-500 mt-0.5">Cumulative cash inflow and net wealth index.</p>
             </div>
 
@@ -519,11 +519,11 @@ export default function WealthVault() {
                     </filter>
                   </defs>
 
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.02)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
                   <XAxis dataKey="label" stroke="#475569" fontSize={10} fontWeight={600} tickLine={false} axisLine={false} dy={8} />
                   <YAxis stroke="#475569" fontSize={10} fontWeight={600} tickLine={false} axisLine={false} dx={-8} tickFormatter={formatYAxis} />
                   
-                  <Tooltip content={<CustomFinanceTooltip />} cursor={{ stroke: 'rgba(255, 255, 255, 0.04)', strokeWidth: 1 }} />
+                  <Tooltip content={<CustomFinanceTooltip />} cursor={{ stroke: 'var(--chart-cursor)', strokeWidth: 1 }} />
                   
                   <Area 
                     type="monotone" 
@@ -533,7 +533,7 @@ export default function WealthVault() {
                     fill="url(#netWorthGradient)" 
                     strokeWidth={3} 
                     filter="url(#neonFinanceGlow)"
-                    activeDot={{ r: 5, stroke: '#090d16', strokeWidth: 2, fill: '#34d399' }} 
+                    activeDot={{ r: 5, stroke: 'var(--chart-dot-stroke)', strokeWidth: 2, fill: '#34d399' }} 
                   />
                   <Area 
                     type="monotone" 
@@ -542,7 +542,7 @@ export default function WealthVault() {
                     stroke="#818cf8" 
                     fill="url(#inflowsGradient)" 
                     strokeWidth={2.5} 
-                    activeDot={{ r: 4, stroke: '#090d16', strokeWidth: 2, fill: '#818cf8' }} 
+                    activeDot={{ r: 4, stroke: 'var(--chart-dot-stroke)', strokeWidth: 2, fill: '#818cf8' }} 
                   />
                   <Legend 
                     verticalAlign="top" 
@@ -560,7 +560,7 @@ export default function WealthVault() {
         {/* Log wealth manual form */}
         <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg flex flex-col justify-between min-h-[380px]">
           <div>
-            <h3 className="text-base font-bold text-white tracking-tight">Record Transaction</h3>
+            <h3 className="text-base font-bold text-slate-100 tracking-tight">Record Transaction</h3>
             <p className="text-xs text-slate-500 mt-0.5">Quick ledger logs bypass markdown notes.</p>
           </div>
 
@@ -649,7 +649,7 @@ export default function WealthVault() {
       <section className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-lg space-y-6">
         <div className="flex justify-between items-center border-b border-slate-800/80 pb-4">
           <div>
-            <h3 className="text-base font-bold text-white tracking-tight">Ledger Logs</h3>
+            <h3 className="text-base font-bold text-slate-100 tracking-tight">Ledger Logs</h3>
             <p className="text-xs text-slate-500 mt-0.5">Manual logs & parsed transactions from the Knowledge Vault notes.</p>
           </div>
           <span className="text-xs font-bold px-3 py-1 bg-slate-950 border border-slate-850 rounded-xl text-slate-400">

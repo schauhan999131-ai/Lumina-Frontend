@@ -4,6 +4,55 @@
   color-scheme: dark;
   font-family: 'Outfit', 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
+  
+  --glass-panel-bg: rgba(17, 24, 39, 0.7);
+  --glass-panel-border: rgba(255, 255, 255, 0.04);
+  --glass-panel-interactive-hover-bg: rgba(17, 24, 39, 0.85);
+  --glass-panel-interactive-hover-shadow: rgba(0, 0, 0, 0.5);
+  --scrollbar-track: rgba(3, 7, 18, 0.5);
+  --scrollbar-thumb: rgba(99, 102, 241, 0.2);
+  --chart-grid: rgba(255, 255, 255, 0.03);
+  --chart-cursor: rgba(255, 255, 255, 0.05);
+  --chart-dot-stroke: #090d16;
+}
+
+html.light {
+  color-scheme: light;
+  --glass-panel-bg: rgba(255, 255, 255, 0.75);
+  --glass-panel-border: rgba(0, 0, 0, 0.08);
+  --glass-panel-interactive-hover-bg: rgba(255, 255, 255, 0.9);
+  --glass-panel-interactive-hover-shadow: rgba(0, 0, 0, 0.08);
+  --scrollbar-track: rgba(241, 245, 249, 0.5);
+  --scrollbar-thumb: rgba(99, 102, 241, 0.25);
+  --chart-grid: rgba(0, 0, 0, 0.05);
+  --chart-cursor: rgba(0, 0, 0, 0.04);
+  --chart-dot-stroke: #ffffff;
+
+  /* Redefine Tailwind v4 Slate values to map dark colors to light, and light to dark */
+  --color-slate-950: #f8fafc;
+  --color-slate-900: #ffffff;
+  --color-slate-850: #f1f5f9;
+  --color-slate-800: #e2e8f0;
+  --color-slate-750: #cbd5e1;
+  --color-slate-700: #94a3b8;
+  --color-slate-600: #64748b;
+  --color-slate-500: #475569;
+  --color-slate-400: #334155;
+  --color-slate-355: #1e293b;
+  --color-slate-300: #1e293b;
+  --color-slate-200: #0f172a;
+  --color-slate-100: #090d16;
+  --color-slate-50: #020617;
+
+  /* Accent color overrides for light mode to keep text/button contrasts high */
+  --color-indigo-300: #4338ca;
+  --color-purple-300: #6d28d9;
+  --color-sky-300: #0369a1;
+  --color-emerald-400: #047857;
+  --color-rose-350: #b91c1c;
+  --color-rose-400: #b91c1c;
+  --color-rose-300: #be123c;
+  --color-amber-400: #b45309;
 }
 
 html {
@@ -11,6 +60,11 @@ html {
   background: radial-gradient(circle at top, rgba(139, 92, 246, 0.1) 0%, rgba(56, 189, 248, 0.05) 30%, transparent 60%),
     #030712;
   scroll-behavior: smooth;
+}
+
+html.light {
+  background: radial-gradient(circle at top, rgba(99, 102, 241, 0.08) 0%, rgba(56, 189, 248, 0.04) 30%, transparent 60%),
+    #f8fafc;
 }
 
 body {
@@ -22,6 +76,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.light body {
+  color: #1e293b;
+}
+
 /* Premium Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
@@ -29,17 +87,17 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(3, 7, 18, 0.5);
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.2);
+  background: var(--scrollbar-thumb);
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-panel-border);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.4);
+  background: rgba(99, 102, 241, 0.45);
 }
 
 ::selection {
@@ -66,10 +124,10 @@ body {
 
 /* Glassmorphism Panels */
 .glass-panel {
-  background: rgba(17, 24, 39, 0.7);
+  background: var(--glass-panel-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-panel-border);
 }
 
 .glass-panel-interactive {
@@ -77,10 +135,10 @@ body {
 }
 
 .glass-panel-interactive:hover {
-  background: rgba(17, 24, 39, 0.85);
+  background: var(--glass-panel-interactive-hover-bg);
   border-color: rgba(139, 92, 246, 0.2);
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5), 0 0 20px -5px rgba(139, 92, 246, 0.1);
+  box-shadow: 0 12px 24px -10px var(--glass-panel-interactive-hover-shadow), 0 0 20px -5px rgba(139, 92, 246, 0.1);
 }
 
 /* Keyframes & Animations */
@@ -161,5 +219,20 @@ input:focus, select:focus, textarea:focus {
 }
 .rotate-y-180 {
   transform: rotateY(180deg);
+}
+
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 

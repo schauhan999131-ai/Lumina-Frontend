@@ -76,6 +76,623 @@ const noteTemplates = {
 3. Auto-syncing ledgers with Wealth and Health Vault profiles`,
 }
 
+// Helper to parse inline formatting like `code`, **bold**, *italic*, [ledger/protein brackets], and images
+const parseInlineFormatting = (text, images = [], onImageClick) => {
+  if (!text) return ''
+  
+  let tokens = [{ type: 'text', content: text }]
+  
+  // 1. Process inline images first: ![alt](src)
+  // This prevents the image brackets from matching sync tags or bold styling.
+  tokens = tokens.flatMap(token => {
+    if (token.type !== 'text') return token
+    const parts = token.content.split(/(\!\[.*?\]\(.*?\))/g)
+    return parts.map(part => {
+      const match = part.match(/^\!\[(.*?)\]\((.*?)\)$/)
+      if (match) {
+        return { type: 'image', alt: match[1], src: match[2] }
+      }
+      return { type: 'text', content: part }
+    })
+  })
+  
+  // 2. Process inline code: `code`
+  tokens = tokens.flatMap(token => {
+    if (token.type !== 'text') return token
+    const parts = token.content.split('`')
+    return parts.map((part, index) => {
+      if (index % 2 === 1) {
+        return { type: 'code', content: part }
+      }
+      return { type: 'text', content: part }
+    })
+  })
+  
+  // 3. Process bold: **bold**
+  tokens = tokens.flatMap(token => {
+    if (token.type !== 'text') return token
+    const parts = token.content.split('**')
+    return parts.map((part, index) => {
+      if (index % 2 === 1) {
+        return { type: 'bold', content: part }
+      }
+      return { type: 'text', content: part }
+    })
+  })
+
+  // 4. Process italic: *italic*
+  tokens = tokens.flatMap(token => {
+    if (token.type !== 'text') return token
+    const parts = token.content.split('*')
+    return parts.map((part, index) => {
+      if (index % 2 === 1) {
+        return { type: 'italic', content: part }
+      }
+      return { type: 'text', content: part }
+    })
+  })
+
+  // 5. Process custom sync tags: [earning: ...], [expense: ...], [saving: ...], [protein: ...]
+  tokens = tokens.flatMap(token => {
+    if (token.type !== 'text') return token
+    const parts = token.content.split(/(\[.*?\])/g)
+    return parts.map((part) => {
+      if (part.startsWith('[') && part.endsWith(']')) {
+        return { type: 'sync_tag', content: part }
+      }
+      return { type: 'text', content: part }
+    })
+  })
+
+  return tokens.map((t, idx) => {
+    switch (t.type) {
+      case 'image':
+        const foundImg = images.find(img => img.id === t.src || img.src === t.src)
+        if (foundImg) {
+          return (
+            <span key={idx} className="my-2 block text-center select-none">
+              <span className="relative group/inline-img inline-block max-w-full rounded-2xl overflow-hidden border border-slate-800 bg-slate-950/40 p-1 hover:border-purple-500/30 transition duration-300 shadow-md">
+                <img
+                  src={foundImg.src}
+                  alt={t.alt || 'Pasted Image'}
+                  className="max-h-80 w-auto object-contain rounded-xl cursor-zoom-in hover:scale-[1.01] transition duration-300 animate-scale-up"
+                  onClick={() => onImageClick(foundImg.src)}
+                />
+                <span className="absolute bottom-2 right-2 bg-slate-900/80 border border-slate-850 px-2.5 py-0.5 rounded-md text-[9px] text-slate-400 font-bold opacity-0 group-hover/inline-img:opacity-100 transition-opacity">
+                  🔍 Click to Zoom
+                </span>
+              </span>
+              {t.alt && <span className="block text-[10px] text-slate-500 mt-1 italic font-sans">{t.alt}</span>}
+            </span>
+          )
+        }
+        return <span key={idx} className="text-rose-455 text-xs italic">[Image not found: {t.src}]</span>
+      case 'code':
+        return <code key={idx} className="bg-slate-900 border border-slate-800 text-purple-300 px-1 py-0.5 rounded text-[10px] font-mono mx-0.5">{t.content}</code>
+      case 'bold':
+        return <strong key={idx} className="font-extrabold text-white">{t.content}</strong>
+      case 'italic':
+        return <em key={idx} className="italic text-slate-200">{t.content}</em>
+      case 'sync_tag':
+        const tagText = t.content
+        const isEarning = tagText.includes('earning:')
+        const isExpense = tagText.includes('expense:')
+        const isSaving = tagText.includes('saving:')
+        const isProtein = tagText.includes('protein:')
+        const isCal = tagText.includes('cal:')
+        const isFood = tagText.includes('food:')
+        
+        // If it doesn't look like a known wealth/health tracker tag, keep it as regular text
+        if (!isEarning && !isExpense && !isSaving && !isProtein && !isCal && !isFood) {
+          return tagText
+        }
+
+        let colorClass = 'bg-slate-900 border-slate-800 text-slate-400'
+        if (isEarning) colorClass = 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+        else if (isExpense) colorClass = 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+        else if (isSaving) colorClass = 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+        else if (isProtein || isCal || isFood) colorClass = 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+
+        return <span key={idx} className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-mono mx-0.5 font-bold ${colorClass}`}>{tagText}</span>
+      default:
+        return t.content
+    }
+  })
+}
+
+// Simple Markdown block parser to render HTML in Preview tab
+const renderMarkdown = (content, images = [], onImageClick) => {
+  if (!content) return <p className="text-xs text-slate-500 italic">No content written yet.</p>
+  
+  const lines = content.split('\n')
+  return lines.map((line, idx) => {
+    // Check for headers
+    if (line.startsWith('### ')) {
+      return (
+        <h4 key={idx} className="text-sm font-bold text-slate-100 mt-4 mb-2 tracking-wide border-b border-slate-800 pb-1 flex items-center gap-1.5">
+          {parseInlineFormatting(line.substring(4), images, onImageClick)}
+        </h4>
+      )
+    }
+    if (line.startsWith('## ')) {
+      return (
+        <h3 key={idx} className="text-base font-extrabold text-slate-100 mt-5 mb-2.5 tracking-tight flex items-center gap-1.5">
+          {parseInlineFormatting(line.substring(3), images, onImageClick)}
+        </h3>
+      )
+    }
+    if (line.startsWith('# ')) {
+      return (
+        <h2 key={idx} className="text-lg font-black text-slate-100 mt-6 mb-3 tracking-tight flex items-center gap-1.5">
+          {parseInlineFormatting(line.substring(2), images, onImageClick)}
+        </h2>
+      )
+    }
+    
+    // Check for list item
+    if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+      const cleanLine = line.trim().substring(2)
+      return (
+        <li key={idx} className="text-xs text-slate-300 ml-4 list-disc list-inside leading-relaxed py-0.5">
+          {parseInlineFormatting(cleanLine, images, onImageClick)}
+        </li>
+      )
+    }
+
+    // Check for ordered list item
+    const matchOrdered = line.trim().match(/^(\d+)\.\s(.*)/)
+    if (matchOrdered) {
+      return (
+        <li key={idx} className="text-xs text-slate-300 ml-4 list-decimal list-inside leading-relaxed py-0.5">
+          {parseInlineFormatting(matchOrdered[2], images, onImageClick)}
+        </li>
+      )
+    }
+    
+    // Empty line spacer
+    if (line.trim() === '') {
+      return <div key={idx} className="h-3" />
+    }
+    
+    return (
+      <p key={idx} className="text-xs text-slate-300 leading-relaxed py-0.5 font-sans min-h-[1.2em]">
+        {parseInlineFormatting(line, images, onImageClick)}
+      </p>
+    )
+  })
+}
+
+const codingChallenges = [
+  // --- JAVASCRIPT / NODE / EXPRESS / MONGO CHALLENGES ---
+  {
+    id: 'js-async',
+    title: '🧠 Node.js Asynchronous Promises',
+    language: 'javascript',
+    difficulty: 'Medium',
+    description: 'Practice working with Promises, async/await, and error handling in Node.js. Implement a function to simulate fetching data from two database APIs concurrently, combine the results, and handle any connection failures gracefully.',
+    starterCode: `// Mock DB async queries
+const fetchUserData = (id) => new Promise(resolve => setTimeout(() => resolve({ id, name: 'Sachin', role: 'admin' }), 200));
+const fetchUserStats = (id) => new Promise(resolve => setTimeout(() => resolve({ id, logins: 124, score: 98 }), 300));
+
+// TASK: Implement fetchMergedProfile to query concurrently
+async function fetchMergedProfile(userId) {
+  print("Starting profile retrieval for user: " + userId);
+  try {
+    // Write code below to fetch user data and stats concurrently using Promise.all
+    const [data, stats] = await Promise.all([
+      fetchUserData(userId),
+      fetchUserStats(userId)
+    ]);
+    
+    return {
+      success: true,
+      profile: { ...data, stats }
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// TEST RUN
+fetchMergedProfile(42).then(result => {
+  print("Merged Result: " + JSON.stringify(result, null, 2));
+});
+`
+  },
+  {
+    id: 'js-express-route',
+    title: '🌐 Express.js CRUD Controller & Auth Routing',
+    language: 'javascript',
+    difficulty: 'Medium',
+    description: 'Implement an Express.js middleware and route controller. Parse incoming headers to check for an "authorization" token. If present and valid, parse body parameter and allow update, otherwise return 401 Unauthorized.',
+    starterCode: `const mockDatabase = { userId: 42, username: 'sachin_dev', verified: true };
+
+// Mock Express Middleware
+function authenticateToken(req, res, next) {
+  const token = req.headers['authorization'];
+  if (!token || token !== 'Bearer secret-jwt-key') {
+    return res({ status: 401, body: { error: 'Unauthorized: Missing or invalid token' } });
+  }
+  req.user = { userId: 42, role: 'admin' };
+  next();
+}
+
+// Controller logic
+function updateProfileController(req, res) {
+  print("Controller triggered by user: " + JSON.stringify(req.user));
+  const { newUsername } = req.body;
+  if (!newUsername) {
+    return res({ status: 400, body: { error: 'Bad Request: newUsername is required' } });
+  }
+  
+  mockDatabase.username = newUsername;
+  return res({ status: 200, body: { message: 'Username updated successfully', data: mockDatabase } });
+}
+
+// SIMULATION ENGINE
+function simulateRequest(req) {
+  let middlewarePassed = false;
+  let finalResponse = null;
+
+  const res = (response) => { finalResponse = response; };
+  const next = () => { middlewarePassed = true; };
+
+  authenticateToken(req, res, next);
+
+  if (middlewarePassed) {
+    updateProfileController(req, res);
+  }
+
+  return finalResponse;
+}
+
+// RUN SIMULATION
+print("--- TEST 1: Request without Auth Header ---");
+const test1 = simulateRequest({ headers: {}, body: { newUsername: 'sachin_pro' } });
+print("Result: " + JSON.stringify(test1));
+
+print("\\n--- TEST 2: Request with Correct Auth Header ---");
+const test2 = simulateRequest({ 
+  headers: { 'authorization': 'Bearer secret-jwt-key' }, 
+  body: { newUsername: 'sachin_pro' } 
+});
+print("Result: " + JSON.stringify(test2));
+`
+  },
+  {
+    id: 'js-mongoose-crud',
+    title: '🗄️ MongoDB / Mongoose Query & CRUD Actions',
+    language: 'javascript',
+    difficulty: 'Hard',
+    description: 'Practice writing MongoDB / Mongoose CRUD operations. Complete the Mongoose query mock code to find active users, update their streak value, and return only the user IDs and names.',
+    starterCode: `// Mock Mongoose Model query methods
+const UserModel = {
+  find: async (query) => {
+    print("Mongoose Model.find() called with query: " + JSON.stringify(query));
+    return [
+      { id: 1, name: 'Alice', active: true, streak: 5 },
+      { id: 2, name: 'Bob', active: true, streak: 12 },
+      { id: 3, name: 'Charlie', active: false, streak: 0 }
+    ].filter(u => Object.keys(query).every(k => u[k] === query[k]));
+  },
+  
+  updateOne: async (filter, update) => {
+    print("Mongoose Model.updateOne() called with filter: " + JSON.stringify(filter) + " and update: " + JSON.stringify(update));
+    return { acknowledged: true, modifiedCount: 1 };
+  }
+};
+
+// TASK: Implement database operations helper
+async function incrementActiveUserStreak(userId) {
+  // 1. Find the active user
+  const users = await UserModel.find({ id: userId, active: true });
+  if (users.length === 0) {
+    print("User not found or is inactive");
+    return false;
+  }
+  
+  const user = users[0];
+  const newStreak = user.streak + 1;
+  
+  // 2. Update the streak value in DB
+  const updateResult = await UserModel.updateOne(
+    { id: userId }, 
+    { $set: { streak: newStreak } }
+  );
+  
+  print("Updated streak to: " + newStreak);
+  return { success: true, newStreak };
+}
+
+// RUN DB METHOD
+incrementActiveUserStreak(2).then(res => {
+  print("DB Operation Result: " + JSON.stringify(res));
+});
+`
+  },
+  {
+    id: 'js-complete-stack',
+    title: '🌐 Complete Express & MongoDB Stack',
+    language: 'javascript',
+    difficulty: 'Hard',
+    description: 'Implement a full server application stack featuring a mock MongoDB database connection, custom authentication middleware, a user router, and controller endpoints. Complete the authenticateToken signature validation and processCheckout balance checking/deductions.',
+    files: {
+      'db.js': `// db.js - Mock MongoDB/Mongoose Connection
+const mockDatabase = {
+  users: [
+    { id: 'usr_42', username: 'sachin_dev', verified: true, balance: 200.00 }
+  ],
+  transactions: []
+};
+
+const db = {
+  connect: async () => {
+    print("🔌 MongoDB: Connecting to database cluster...");
+    await new Promise(r => setTimeout(r, 150));
+    print("✅ MongoDB: Database connection established!");
+  },
+
+  findUserById: async (id) => {
+    return mockDatabase.users.find(u => u.id === id) || null;
+  },
+
+  updateUserBalance: async (id, newBalance) => {
+    const user = mockDatabase.users.find(u => u.id === id);
+    if (user) {
+      user.balance = newBalance;
+      print("💾 MongoDB: Updated user balance to $" + newBalance.toFixed(2));
+    }
+    return user;
+  },
+
+  createTransaction: async (userId, amount, item) => {
+    const txn = {
+      id: 'txn_' + Math.floor(Math.random() * 900000 + 100000),
+      userId,
+      amount,
+      item,
+      timestamp: new Date().toISOString()
+    };
+    mockDatabase.transactions.push(txn);
+    print("💾 MongoDB: Saved transaction " + txn.id + " for $" + amount);
+    return txn;
+  }
+};
+
+module.exports = db;`,
+
+      'middleware/auth.js': `// middleware/auth.js - JWT Authentication Middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) {
+    return res(401, { error: 'Unauthorized: Missing authorization header' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res(401, { error: 'Unauthorized: Invalid token format' });
+  }
+
+  // TASK: Verify signature and decode user payload
+  // The client will send "Bearer sachin-jwt-secret-key"
+  if (token !== 'sachin-jwt-secret-key') {
+    return res(401, { error: 'Unauthorized: Access token is invalid or expired' });
+  }
+
+  // Populate req.user
+  req.user = { id: 'usr_42', role: 'admin' };
+  print("🔑 Auth Middleware: JWT token successfully validated");
+  next();
+}
+
+module.exports = authenticateToken;`,
+
+      'controllers/userController.js': `// controllers/userController.js - Handles business operations
+const db = require('./db');
+
+const userController = {
+  getProfile: async (req, res) => {
+    const user = await db.findUserById(req.user.id);
+    if (!user) {
+      return res(404, { error: 'User profile not found' });
+    }
+    return res(200, { success: true, user });
+  },
+
+  processCheckout: async (req, res) => {
+    const { itemId, amount, itemName } = req.body;
+
+    if (!itemId || !amount || !itemName) {
+      return res(400, { error: 'Bad Request: itemId, amount, and itemName are required' });
+    }
+
+    const user = await db.findUserById(req.user.id);
+    if (!user) {
+      return res(404, { error: 'User account not found' });
+    }
+
+    // TASK: Implement balance validation and checkout processing
+    if (user.balance < amount) {
+      return res(400, { error: "Payment failed: Insufficient balance. Required: $" + amount + ", Available: $" + user.balance });
+    }
+
+    const newBalance = user.balance - amount;
+    await db.updateUserBalance(user.id, newBalance);
+    const transaction = await db.createTransaction(user.id, amount, itemName);
+
+    return res(200, {
+      message: 'Checkout completed successfully',
+      transaction,
+      balanceRemaining: newBalance
+    });
+  }
+};
+
+module.exports = userController;`,
+
+      'routes/user.js': `// routes/user.js - Maps API endpoints to controller actions
+const authenticateToken = require('../middleware/auth');
+const userController = require('../controllers/userController');
+
+function configureRoutes(app) {
+  print("🔗 Routes: Registering core endpoints...");
+  
+  // Profile endpoint
+  app.get('/api/users/profile', authenticateToken, userController.getProfile);
+  
+  // TASK: Mount POST checkout endpoint using authenticateToken middleware
+  app.post('/api/checkout', authenticateToken, userController.processCheckout);
+}
+
+module.exports = configureRoutes;`,
+
+      'app.js': `// app.js - Server Configuration & Mock HTTP Router
+const db = require('./db');
+const configureRoutes = require('./routes/user');
+
+const app = {
+  routes: {},
+
+  get(path, ...pipeline) {
+    this.routes['GET:' + path] = pipeline;
+  },
+
+  post(path, ...pipeline) {
+    this.routes['POST:' + path] = pipeline;
+  },
+
+  // Simulated request dispatcher
+  async handleRequest(req) {
+    const key = req.method + ':' + req.path;
+    const pipeline = this.routes[key];
+
+    if (!pipeline) {
+      return { status: 404, body: { error: 'Not Found: Route ' + key + ' is not registered' } };
+    }
+
+    let currentIdx = 0;
+    let response = null;
+
+    const res = (status, body) => {
+      response = { status, body };
+    };
+
+    const next = () => {
+      currentIdx++;
+      if (currentIdx < pipeline.length) {
+        const nextHandler = pipeline[currentIdx];
+        nextHandler(req, res, next);
+      }
+    };
+
+    // Execute first middleware or controller in the pipeline
+    try {
+      await pipeline[0](req, res, next);
+    } catch (err) {
+      print("🔴 Server Error: " + err.message);
+      return { status: 500, body: { error: 'Internal Server Error' } };
+    }
+
+    return response || { status: 500, body: { error: 'No response returned by handler' } };
+  }
+};
+
+async function startServer() {
+  print("🚀 App: Initializing Express.js Application Server...");
+  
+  // Connect DB
+  await db.connect();
+  
+  // Register routes
+  configureRoutes(app);
+
+  print("⚡ App: Express application is ready for HTTP traffic!");
+  return app;
+}
+
+module.exports = { app, startServer };`
+    }
+  },
+
+  // --- RUST LANGUAGE CHALLENGES ---
+  {
+    id: 'rust-ownership',
+    title: '🦀 Rust Ownership & Borrowing Basics',
+    language: 'rust',
+    difficulty: 'Easy',
+    description: 'Learn Rust memory safety principles: ownership, move semantics, and references. Fix the code to borrow the string rather than moving ownership, allowing the main print statement to run successfully.',
+    starterCode: `fn calculate_length(s: &String) -> usize {
+    s.len()
+}
+
+fn main() {
+    let s1 = String::from("Rust Lang");
+    
+    // TASK: Fix this line to pass a reference instead of moving s1
+    let len = calculate_length(&s1);
+    
+    print!("The length of '{}' is {}.", s1, len);
+}`
+  },
+  {
+    id: 'rust-match',
+    title: '🦀 Rust Option & Pattern Matching',
+    language: 'rust',
+    difficulty: 'Medium',
+    description: 'Practice using Option enum and pattern matching in Rust. Complete the match statement to handle both Some(val) and None cases safely.',
+    starterCode: `fn divide(numerator: f64, denominator: f64) -> Option<f64> {
+    if denominator == 0.0 {
+        None
+    } else {
+        Some(numerator / denominator)
+    }
+}
+
+fn main() {
+    let result = divide(10.0, 2.0);
+    
+    // TASK: Practice pattern matching on Option
+    match result {
+        Some(value) => print!("Division succeeded: {}", value),
+        None => print!("Error: Cannot divide by zero!"),
+    }
+}`
+  },
+  {
+    id: 'rust-struct-traits',
+    title: '🦀 Rust Structs and Trait Implementations',
+    language: 'rust',
+    difficulty: 'Hard',
+    description: 'Create custom data models using structs, and implement behaviors using traits. Implement a Summary trait for a NewsArticle struct.',
+    starterCode: `pub trait Summary {
+    fn summarize(&self) -> String;
+}
+
+pub struct NewsArticle {
+    pub headline: String,
+    pub author: String,
+    pub content: String,
+}
+
+// TASK: Implement the Summary trait for NewsArticle
+impl Summary for NewsArticle {
+    fn summarize(&self) -> String {
+        format!("{} by {}", self.headline, self.author)
+    }
+}
+
+fn main() {
+    let article = NewsArticle {
+        headline: String::from("Rust 1.78 Released!"),
+        author: String::from("Sachin"),
+        content: String::from("Exciting new features..."),
+    };
+    
+    print!("Summary: {}", article.summarize());
+}`
+  }
+]
+
 // Starter Vocabulary Pack
 const initialVocabulary = [
   {
@@ -189,6 +806,287 @@ export default function StudyNotes() {
     return saved ? JSON.parse(saved) : initialNotes
   })
   const [activeNoteId, setActiveNoteId] = useState(null)
+  const [workspaceMode, setWorkspaceMode] = useState('edit') // 'edit' or 'preview'
+  const [workspaceSubTab, setWorkspaceSubTab] = useState('doc') // 'doc' or 'checklist'
+  const [lightboxImage, setLightboxImage] = useState(null)
+  
+  // Auto-reset workspace mode and sub-tab to 'doc' when active note changes
+  useEffect(() => {
+    setWorkspaceMode('edit')
+    setWorkspaceSubTab('doc')
+  }, [activeNoteId])
+
+  // --- CODING ARENA STATE ---
+  const [codingLanguage, setCodingLanguage] = useState('javascript') // 'javascript' or 'rust'
+  const [codingChallenge, setCodingChallenge] = useState(codingChallenges[0])
+  const [userCode, setUserCode] = useState(codingChallenges[0].starterCode)
+  const [activeFile, setActiveFile] = useState(null)
+  const [terminalLogs, setTerminalLogs] = useState([])
+  const [previewKey, setPreviewKey] = useState(0)
+
+  const handleSelectLanguage = (lang) => {
+    setCodingLanguage(lang)
+    const challengesForLang = codingChallenges.filter(c => c.language === lang)
+    if (challengesForLang.length > 0) {
+      const challenge = challengesForLang[0]
+      setCodingChallenge(challenge)
+      if (challenge.files) {
+        setUserCode(challenge.files)
+        setActiveFile(Object.keys(challenge.files)[0])
+      } else {
+        setUserCode(challenge.starterCode)
+        setActiveFile(null)
+      }
+    }
+    setTerminalLogs([])
+    setPreviewKey(prev => prev + 1)
+  }
+
+  const handleSelectChallenge = (challengeId) => {
+    const challenge = codingChallenges.find(c => c.id === challengeId)
+    if (!challenge) return
+    setCodingChallenge(challenge)
+    if (challenge.files) {
+      setUserCode(challenge.files)
+      setActiveFile(Object.keys(challenge.files)[0])
+    } else {
+      setUserCode(challenge.starterCode)
+      setActiveFile(null)
+    }
+    setTerminalLogs([])
+    setPreviewKey(prev => prev + 1)
+  }
+
+  const runRustCode = (challengeId, codeToRun) => {
+    const outputs = []
+    outputs.push("   Compiling coding_arena v0.1.0 (/sandbox)")
+    
+    if (challengeId === 'rust-ownership') {
+      const isFixed = codeToRun.includes('&s1') || codeToRun.includes('& s1')
+      if (isFixed) {
+        outputs.push("    Finished dev [unoptimized + debuginfo] target(s) in 0.48s")
+        outputs.push("     Running `target/debug/coding_arena`")
+        outputs.push("--------------------------------------------------")
+        outputs.push("The length of 'Rust Lang' is 9.")
+        outputs.push("\n✓ Success! You solved the ownership challenge.")
+      } else {
+        outputs.push("🔴 error[E0382]: borrow of moved value: `s1`")
+        outputs.push("  --> src/main.rs:9:28")
+        outputs.push("   |")
+        outputs.push("7  |     let s1 = String::from(\"Rust Lang\");")
+        outputs.push("   |         -- move occurs because `s1` has type `String`, which does not implement the `Copy` trait")
+        outputs.push("8  |     let len = calculate_length(s1);")
+        outputs.push("   |                                -- value moved here")
+        outputs.push("9  |     print!(\"The length of '{}' is {}.\", s1, len);")
+        outputs.push("   |                                         ^^ value borrowed here after move")
+        outputs.push("\n💡 Hint: Pass a reference using `&s1` instead of `s1` in calculate_length.")
+      }
+    } else if (challengeId === 'rust-match') {
+      const hasSome = codeToRun.includes('Some')
+      const hasNone = codeToRun.includes('None')
+      const hasMatch = codeToRun.includes('match')
+      
+      if (hasSome && hasNone && hasMatch) {
+        outputs.push("    Finished dev [unoptimized + debuginfo] target(s) in 0.52s")
+        outputs.push("     Running `target/debug/coding_arena`")
+        outputs.push("--------------------------------------------------")
+        outputs.push("Division succeeded: 5")
+        outputs.push("\n✓ Success! You matched the Option enum.")
+      } else {
+        outputs.push("🔴 error[E0004]: non-exhaustive patterns: `None` not covered")
+        outputs.push("  --> src/main.rs:13:5")
+        outputs.push("   |")
+        outputs.push("13 |     match result {")
+        outputs.push("   |           ^^^^^^ pattern `None` not covered")
+        outputs.push("   |")
+        outputs.push("💡 Hint: Implement both `Some(value) => ...` and `None => ...` cases inside the match block.")
+      }
+    } else if (challengeId === 'rust-struct-traits') {
+      const hasImpl = codeToRun.includes('impl Summary for NewsArticle')
+      const hasSummarize = codeToRun.includes('fn summarize')
+      
+      if (hasImpl && hasSummarize) {
+        outputs.push("    Finished dev [unoptimized + debuginfo] target(s) in 0.65s")
+        outputs.push("     Running `target/debug/coding_arena`")
+        outputs.push("--------------------------------------------------")
+        outputs.push("Summary: Rust 1.78 Released! by Sachin")
+        outputs.push("\n✓ Success! You implemented the Summary trait successfully.")
+      } else {
+        outputs.push("🔴 error[E0277]: the trait bound `NewsArticle: Summary` is not satisfied")
+        outputs.push("  --> src/main.rs:24:37")
+        outputs.push("   |")
+        outputs.push("24 |     print!(\"Summary: {}\", article.summarize());")
+        outputs.push("   |                                   ^^^^^^^^^ method cannot be called on `NewsArticle` due to unsatisfied trait bounds")
+        outputs.push("   |")
+        outputs.push("💡 Hint: Write `impl Summary for NewsArticle { fn summarize(&self) -> String { ... } }` in the code editor.")
+      }
+    }
+
+    setTerminalLogs(outputs)
+  }
+
+  const runBackendCode = (codeToRun) => {
+    const outputs = []
+    
+    const print = (...args) => {
+      const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ')
+      outputs.push(msg)
+    }
+
+    try {
+      const originalConsoleLog = console.log
+      console.log = (...args) => {
+        const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ')
+        outputs.push(msg)
+        originalConsoleLog.apply(console, args)
+      }
+
+      const runner = new Function('print', 'console', codeToRun)
+      runner(print, console)
+
+      console.log = originalConsoleLog
+
+      if (outputs.length === 0) {
+        outputs.push("✓ Run succeeded with no outputs. (Use print() or console.log() to print to this terminal)")
+      }
+    } catch (err) {
+      outputs.push(`🔴 Execution Error: ${err.message}`)
+      if (err.stack) {
+        const lines = err.stack.split('\n')
+        if (lines[1]) outputs.push(`   at ${lines[1].trim()}`)
+      }
+    }
+
+    setTerminalLogs(outputs)
+  }
+
+  const runCompleteStackCode = (filesMap) => {
+    const outputs = []
+    
+    const print = (...args) => {
+      const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ')
+      outputs.push(msg)
+    }
+
+    try {
+      const originalConsoleLog = console.log
+      console.log = (...args) => {
+        const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ')
+        outputs.push(msg)
+        originalConsoleLog.apply(console, args)
+      }
+
+      // Mock CommonJS require system
+      const modules = {}
+      const requireMock = (path) => {
+        // Resolve absolute or relative paths
+        const cleanPath = path
+          .replace(/^\.\//, '')
+          .replace(/^\.\.\//, '')
+          .replace(/\.js$/, '')
+          .replace('controllers/', '')
+          .replace('middleware/', '')
+          .replace('routes/', '');
+        
+        if (modules[cleanPath]) {
+          return modules[cleanPath].exports;
+        }
+        throw new Error("Cannot find module '" + path + "'");
+      }
+
+      // Initialize all modules in dependency order
+      const fileExecutionOrder = [
+        { name: 'db', path: 'db.js' },
+        { name: 'auth', path: 'middleware/auth.js' },
+        { name: 'userController', path: 'controllers/userController.js' },
+        { name: 'user', path: 'routes/user.js' },
+        { name: 'app', path: 'app.js' }
+      ]
+
+      for (const file of fileExecutionOrder) {
+        const code = filesMap[file.path]
+        if (code === undefined) {
+          throw new Error("Missing file source: " + file.path);
+        }
+        const module = { exports: {} }
+        modules[file.name] = module
+        
+        const fileFunction = new Function('require', 'module', 'exports', 'print', 'console', code)
+        fileFunction(requireMock, module, module.exports, print, console)
+      }
+
+      // Run App Initialization
+      const appModule = modules['app'].exports;
+      if (!appModule || typeof appModule.startServer !== 'function') {
+        throw new Error("app.js must export an object containing a 'startServer' function.");
+      }
+
+      // We run the integration tests asynchronously since database setups mimic async/await timeouts
+      (async () => {
+        try {
+          const appInstance = await appModule.startServer()
+          if (!appInstance || typeof appInstance.handleRequest !== 'function') {
+            throw new Error("startServer must return an app object containing a 'handleRequest' function.");
+          }
+
+          print("\n--- TEST 1: Request profile without authorization header ---");
+          const test1 = await appInstance.handleRequest({
+            method: 'GET',
+            path: '/api/users/profile',
+            headers: {}
+          })
+          print("GET Response Code: " + test1.status)
+          print("GET Response Body: " + JSON.stringify(test1.body))
+
+          print("\n--- TEST 2: Checkout with invalid authorization header ---");
+          const test2 = await appInstance.handleRequest({
+            method: 'POST',
+            path: '/api/checkout',
+            headers: { 'authorization': 'Bearer invalid-token' },
+            body: { itemId: 'note_1', amount: 49.00, itemName: 'Clean Architecture Course' }
+          })
+          print("POST Response Code: " + test2.status)
+          print("POST Response Body: " + JSON.stringify(test2.body))
+
+          print("\n--- TEST 3: Successful checkout with correct JWT ---");
+          const test3 = await appInstance.handleRequest({
+            method: 'POST',
+            path: '/api/checkout',
+            headers: { 'authorization': 'Bearer sachin-jwt-secret-key' },
+            body: { itemId: 'note_1', amount: 49.00, itemName: 'Clean Architecture Course' }
+          })
+          print("POST Response Code: " + test3.status)
+          print("POST Response Body: " + JSON.stringify(test3.body))
+
+          print("\n--- TEST 4: Checkout transaction validation (Insufficient Balance) ---");
+          const test4 = await appInstance.handleRequest({
+            method: 'POST',
+            path: '/api/checkout',
+            headers: { 'authorization': 'Bearer sachin-jwt-secret-key' },
+            body: { itemId: 'note_2', amount: 300.00, itemName: 'Distributed Systems Course' }
+          })
+          print("POST Response Code: " + test4.status)
+          print("POST Response Body: " + JSON.stringify(test4.body))
+
+          print("\n✓ Full Stack Integration Suite complete! All routes check out.");
+          setTerminalLogs(outputs)
+        } catch (err) {
+          outputs.push("🔴 Simulation Runtime Error: " + err.message)
+          setTerminalLogs([...outputs])
+        }
+      })()
+
+      console.log = originalConsoleLog
+    } catch (err) {
+      outputs.push("🔴 Module Compilation Error: " + err.message)
+      if (err.stack) {
+        const lines = err.stack.split('\n')
+        if (lines[1]) outputs.push("   at " + lines[1].trim())
+      }
+      setTerminalLogs(outputs)
+    }
+  }
+
   const [searchQuery, setSearchQuery] = useState('')
   const [newTodoText, setNewTodoText] = useState('')
   const [selectedSubject, setSelectedSubject] = useState('All')
@@ -531,8 +1429,29 @@ export default function StudyNotes() {
     const blob = imageItem.getAsFile()
     const reader = new FileReader()
     reader.onload = (evt) => {
-      const images = [...(note.images || []), { id: Date.now(), src: evt.target.result }]
-      updateNote(noteId, { images })
+      const imgId = `img_${Date.now()}`
+      const images = [...(note.images || []), { id: imgId, src: evt.target.result }]
+      
+      // Get cursor position in textarea
+      const textarea = e.target
+      const selectionStart = textarea.selectionStart
+      const selectionEnd = textarea.selectionEnd
+      const text = note.content || ''
+      
+      const imageTag = `\n![Pasted Image](${imgId})\n`
+      const newContent = text.substring(0, selectionStart) + imageTag + text.substring(selectionEnd)
+      
+      updateNote(noteId, { 
+        content: newContent,
+        images 
+      })
+
+      // Position the cursor after the inserted tag
+      setTimeout(() => {
+        textarea.focus()
+        const newCursorPos = selectionStart + imageTag.length
+        textarea.setSelectionRange(newCursorPos, newCursorPos)
+      }, 0)
     }
     reader.readAsDataURL(blob)
   }
@@ -557,24 +1476,26 @@ export default function StudyNotes() {
       {/* Header Banner with Custom Tab Toggles */}
       <div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg shadow-slate-950/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h2 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
             <span>📚</span>
             <span>Knowledge Vault</span>
           </h2>
           <p className="mt-1 text-xs text-slate-400">
             {activeTab === 'notes' 
               ? 'Write documentation, log design guides, and compile concepts for future reference.' 
-              : 'Add specialized coding phrases & English vocabulary. Review them via flashcards to memorize easily.'
+              : activeTab === 'vocab'
+              ? 'Add specialized coding phrases & English vocabulary. Review them via flashcards to memorize easily.'
+              : 'Practice your coding skills client-side. Select a challenge, write code, and run or preview it live!'
             }
           </p>
         </div>
 
         {/* Tab Controls */}
-        <div className="flex bg-slate-900 border border-slate-800 p-1.5 rounded-2xl self-start md:self-auto select-none">
+        <div className="flex flex-wrap sm:flex-nowrap bg-slate-900 border border-slate-800 p-1.5 rounded-2xl self-stretch md:self-auto select-none w-full md:w-auto gap-1 sm:gap-0">
           <button
             type="button"
             onClick={() => setActiveTab('notes')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition duration-150 ${
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold rounded-xl transition duration-150 ${
               activeTab === 'notes'
                 ? 'bg-purple-600/20 border border-purple-500/35 text-purple-300 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 border border-transparent'
@@ -585,13 +1506,24 @@ export default function StudyNotes() {
           <button
             type="button"
             onClick={() => setActiveTab('vocab')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition duration-150 ${
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold rounded-xl transition duration-150 ${
               activeTab === 'vocab'
                 ? 'bg-purple-600/20 border border-purple-500/35 text-purple-300 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 border border-transparent'
             }`}
           >
-            <span>🗣️</span> Vocab & Phrase Hub
+            <span>🗣️</span> Vocab Hub
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('coding')}
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-2 px-3 sm:px-4 py-2 text-[10px] sm:text-xs font-bold rounded-xl transition duration-150 ${
+              activeTab === 'coding'
+                ? 'bg-purple-600/20 border border-purple-500/35 text-purple-300 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+            }`}
+          >
+            <span>💻</span> Coding Arena
           </button>
         </div>
       </div>
@@ -600,8 +1532,8 @@ export default function StudyNotes() {
       {activeTab === 'notes' ? (
         <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
           {/* LEFT COLUMN: NOTES SIDEBAR */}
-          <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg flex flex-col h-[750px]">
-            <div className="flex items-center justify-between border-b border-slate-900 pb-3">
+          <div className={`space-y-4 rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg flex flex-col h-[750px] ${activeNoteId !== null ? 'hidden lg:flex' : 'flex'}`}>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Pages</h3>
               <button
                 type="button"
@@ -697,7 +1629,7 @@ export default function StudyNotes() {
           </div>
 
           {/* RIGHT COLUMN: WORKSPACE */}
-          <div className="h-[750px] animate-fade-in">
+          <div className={`h-auto lg:h-[750px] animate-fade-in ${activeNoteId !== null ? 'block' : 'hidden lg:block'}`}>
             {(() => {
               const activeNote = notes.find((n) => n.id === activeNoteId)
               
@@ -708,7 +1640,7 @@ export default function StudyNotes() {
                       📓
                     </div>
                     <div className="max-w-md">
-                      <h3 className="text-base font-bold text-white">Lumina Knowledge Workspace</h3>
+                      <h3 className="text-base font-bold text-slate-100">Lumina Knowledge Workspace</h3>
                       <p className="text-xs text-slate-400 mt-1">
                         Select a document from the left list to begin writing product specs, system roadmaps, or notes.
                       </p>
@@ -768,8 +1700,34 @@ export default function StudyNotes() {
                       </button>
                     </div>
 
+                    {/* Sub-tab controls for screens below xl breakpoint */}
+                    <div className="flex xl:hidden bg-slate-900 border border-slate-850 p-1 rounded-xl select-none">
+                      <button
+                        type="button"
+                        onClick={() => setWorkspaceSubTab('doc')}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition duration-150 flex items-center gap-1 ${
+                          workspaceSubTab === 'doc'
+                            ? 'bg-purple-600/20 border border-purple-500/30 text-purple-300'
+                            : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                        }`}
+                      >
+                        <span>📝</span> Document
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWorkspaceSubTab('checklist')}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition duration-150 flex items-center gap-1 ${
+                          workspaceSubTab === 'checklist'
+                            ? 'bg-purple-600/20 border border-purple-500/30 text-purple-300'
+                            : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                        }`}
+                      >
+                        <span>📋</span> Checklist {totalCount > 0 && `(${completedCount}/${totalCount})`}
+                      </button>
+                    </div>
+
                     <div className="flex items-center gap-1.5 select-none text-[9px] font-bold">
-                      <span className="text-slate-500 uppercase tracking-wide mr-1">Load Template:</span>
+                      <span className="text-slate-550 uppercase tracking-wide mr-1">Load Template:</span>
                       <button
                         type="button"
                         onClick={() => handleLoadTemplate('website')}
@@ -797,62 +1755,99 @@ export default function StudyNotes() {
                   {/* Split Workspace Panels */}
                   <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-0">
                     {/* Document Panel */}
-                    <div className="xl:col-span-7 flex flex-col rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg min-h-0">
+                    <div className={`xl:col-span-7 flex flex-col rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg min-h-[500px] xl:min-h-0 ${workspaceSubTab === 'doc' ? 'flex' : 'hidden xl:flex'}`}>
                       {/* Title input */}
                       <input
                         value={activeNote.title || ''}
                         onChange={(e) => updateNote(activeNote.id, { title: e.target.value })}
-                        className="w-full bg-transparent border-b border-transparent hover:border-slate-800 focus:border-purple-500/30 text-xl font-black text-white focus:outline-none py-1 mb-2"
+                        className="w-full bg-transparent border-b border-transparent hover:border-slate-800 focus:border-purple-500/30 text-xl font-black text-slate-100 focus:outline-none py-1 mb-2"
                         placeholder="Untitled Note"
                       />
 
-                      {/* Subject dropdown */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase">Topic:</span>
-                        <input
-                          list="note-subject-suggestions-workspace"
-                          value={activeNote.subject || ''}
-                          onChange={(e) => updateNote(activeNote.id, { subject: e.target.value })}
-                          className="bg-slate-900 border border-slate-850 hover:border-slate-700 text-xs px-2.5 py-1 rounded-xl text-slate-355 focus:outline-none focus:border-purple-500"
-                          placeholder="Select or type a topic"
-                        />
-                        <datalist id="note-subject-suggestions-workspace">
-                          {subjectSuggestions.map((s) => (
-                            <option key={s} value={s} />
-                          ))}
-                        </datalist>
+                      {/* Subject dropdown & Workspace Mode Toggle */}
+                      <div className="flex items-center justify-between mt-1 gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase">Topic:</span>
+                          <input
+                            list="note-subject-suggestions-workspace"
+                            value={activeNote.subject || ''}
+                            onChange={(e) => updateNote(activeNote.id, { subject: e.target.value })}
+                            className="bg-slate-900 border border-slate-850 hover:border-slate-700 text-xs px-2.5 py-1 rounded-xl text-slate-355 focus:outline-none focus:border-purple-500"
+                            placeholder="Select or type a topic"
+                          />
+                          <datalist id="note-subject-suggestions-workspace">
+                            {subjectSuggestions.map((s) => (
+                              <option key={s} value={s} />
+                            ))}
+                          </datalist>
+                        </div>
+
+                        <div className="flex bg-slate-900 border border-slate-850 p-1 rounded-xl select-none">
+                          <button
+                            type="button"
+                            onClick={() => setWorkspaceMode('edit')}
+                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition duration-150 flex items-center gap-1 ${
+                              workspaceMode === 'edit'
+                                ? 'bg-purple-600/20 border border-purple-500/30 text-purple-300'
+                                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                            }`}
+                          >
+                            <span>📝</span> Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWorkspaceMode('preview')}
+                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition duration-150 flex items-center gap-1 ${
+                              workspaceMode === 'preview'
+                                ? 'bg-purple-600/20 border border-purple-500/30 text-purple-300'
+                                : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                            }`}
+                          >
+                            <span>👁️</span> Preview
+                          </button>
+                        </div>
                       </div>
 
                       {/* Document Draft content */}
-                      <textarea
-                        value={activeNote.content || ''}
-                        onChange={(e) => updateNote(activeNote.id, { content: e.target.value })}
-                        onPaste={(e) => handleNoteImagePaste(activeNote.id, e)}
-                        className="w-full flex-1 mt-4 bg-transparent resize-none border-0 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none leading-relaxed overflow-y-auto pr-1 border-t border-slate-900 pt-3"
-                        placeholder="Write about the project planning, system designs, or details (Supports basic Markdown tags like ### headers and - bullet lists)..."
-                      />
+                      {workspaceMode === 'edit' ? (
+                        <textarea
+                          value={activeNote.content || ''}
+                          onChange={(e) => updateNote(activeNote.id, { content: e.target.value })}
+                          onPaste={(e) => handleNoteImagePaste(activeNote.id, e)}
+                          className="w-full flex-1 mt-4 bg-transparent resize-none border-0 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none leading-relaxed overflow-y-auto pr-1 border-t border-slate-800 pt-3"
+                          placeholder="Write about the project planning, system designs, or details (Supports basic Markdown tags like ### headers and - bullet lists)..."
+                        />
+                      ) : (
+                        <div className="w-full flex-1 mt-4 overflow-y-auto pr-1 border-t border-slate-800 pt-3 space-y-2 select-text">
+                          {renderMarkdown(activeNote.content || '', activeNote.images || [], setLightboxImage)}
+                        </div>
+                      )}
 
                       {/* Pasted Images Gallery */}
                       {(activeNote.images || []).length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-slate-900 space-y-2">
-                          <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Pasted Images</span>
+                        <div className="mt-3 pt-3 border-t border-slate-800 space-y-2">
+                          <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Pasted Images Gallery</span>
                           <div className="flex flex-wrap gap-2">
                             {(activeNote.images || []).map((img) => (
                               <div key={img.id} className="relative group/img">
                                 <img
                                   src={img.src}
                                   alt=""
-                                  className="h-24 w-auto max-w-[200px] rounded-xl border border-slate-800 object-cover cursor-pointer hover:border-purple-500/30 transition"
-                                  onClick={() => window.open(img.src, '_blank')}
-                                  title="Click to open full size"
+                                  className="h-24 w-auto max-w-[200px] rounded-xl border border-slate-800 object-cover cursor-pointer hover:border-purple-500/30 transition shadow-sm"
+                                  onClick={() => setLightboxImage(img.src)}
+                                  title="Click to view full size"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => {
                                     const updated = (activeNote.images || []).filter(i => i.id !== img.id)
-                                    updateNote(activeNote.id, { images: updated })
+                                    const cleanedContent = (activeNote.content || '').replaceAll(`![Pasted Image](${img.id})`, '')
+                                    updateNote(activeNote.id, { 
+                                      images: updated,
+                                      content: cleanedContent 
+                                    })
                                   }}
-                                  className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/img:opacity-100 bg-rose-500 hover:bg-rose-600 text-white rounded-full w-4 h-4 text-[9px] flex items-center justify-center transition"
+                                  className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/img:opacity-100 bg-rose-500 hover:bg-rose-600 text-white rounded-full w-4 h-4 text-[9px] flex items-center justify-center transition shadow-md"
                                 >
                                   ✕
                                 </button>
@@ -865,8 +1860,8 @@ export default function StudyNotes() {
                     </div>
 
                     {/* Interactive Checklist Panel */}
-                    <div className="xl:col-span-5 flex flex-col rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg min-h-0">
-                      <div className="border-b border-slate-900 pb-3 mb-3 flex items-center justify-between">
+                    <div className={`xl:col-span-5 flex flex-col rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg min-h-[400px] xl:min-h-0 ${workspaceSubTab === 'checklist' ? 'flex' : 'hidden xl:flex'}`}>
+                      <div className="border-b border-slate-800 pb-3 mb-3 flex items-center justify-between">
                         <div>
                           <h4 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Roadmap Checklist</h4>
                           <span className="text-[9px] text-slate-500 mt-0.5">Toggle milestones and project checklist items</span>
@@ -927,7 +1922,7 @@ export default function StudyNotes() {
                           todos.map((todo) => (
                             <div
                               key={todo.id}
-                              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-900 bg-slate-900/20 group hover:border-slate-800 hover:bg-slate-900/40 transition"
+                              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-800 bg-slate-900/20 group hover:border-slate-800 hover:bg-slate-900/40 transition"
                             >
                               <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
                                 <input
@@ -960,7 +1955,7 @@ export default function StudyNotes() {
             })()}
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'vocab' ? (
         // --- VOCAB & PHRASE HUB VIEW ---
         <div className="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
           {/* LEFT COLUMN: Study arena + Add Word Form */}
@@ -968,7 +1963,7 @@ export default function StudyNotes() {
             
             {/* FLASHCARD PRACTICE ARENA */}
             <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg">
-              <div className="flex justify-between items-center border-b border-slate-900 pb-3 mb-4">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
                 <div>
                   <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Flashcard Study Arena</h3>
                   <p className="text-[10px] text-slate-500 mt-0.5">Flip cards and mark words as Mastered</p>
@@ -997,7 +1992,7 @@ export default function StudyNotes() {
               </div>
 
               {learningWords.length === 0 ? (
-                <div className="rounded-2xl border border-slate-900 bg-slate-900/30 p-8 text-center space-y-4">
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-8 text-center space-y-4">
                   <div className="text-4xl text-purple-400">🎉</div>
                   <div>
                     <h4 className="text-sm font-bold text-slate-200">No active learning cards!</h4>
@@ -1056,7 +2051,7 @@ export default function StudyNotes() {
                         </div>
 
                         <div className="text-center space-y-2">
-                          <h2 className="text-3xl font-black text-white tracking-tight leading-none">
+                          <h2 className="text-3xl font-black text-slate-100 tracking-tight leading-none">
                             {learningWords[activeCardIndex].word}
                           </h2>
                           <span className="inline-block text-[11px] font-bold italic text-purple-400 bg-purple-500/5 px-2 py-0.5 rounded border border-purple-500/10">
@@ -1073,7 +2068,7 @@ export default function StudyNotes() {
                       <div className="absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-2xl border border-purple-500/20 bg-slate-900 p-6 flex flex-col justify-between shadow-xl overflow-y-auto">
                         <div className="space-y-4">
                           <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                            <span className="text-xs font-extrabold text-white">
+                            <span className="text-xs font-extrabold text-slate-100">
                               {learningWords[activeCardIndex].word} <span className="text-[10px] font-bold text-purple-400 italic">({learningWords[activeCardIndex].partOfSpeech})</span>
                             </span>
                             <span className="text-[9px] bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-full text-slate-400 font-bold">
@@ -1157,12 +2152,12 @@ export default function StudyNotes() {
 
             {/* CREATOR FORM */}
             <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg">
-              <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 border-b border-slate-900 pb-3 mb-4">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400 border-b border-slate-800 pb-3 mb-4">
                 Add Word or Phrase
               </h3>
 
               <form onSubmit={handleCreateVocab} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <label className="block text-xs text-slate-450 font-semibold">
                     Word / Phrase *
                     <input
@@ -1191,7 +2186,7 @@ export default function StudyNotes() {
                   </label>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <label className="block text-xs text-slate-450 font-semibold">
                     Category Area
                     <select
@@ -1353,7 +2348,7 @@ export default function StudyNotes() {
               </div>
 
               {/* Filter Row 2: Difficulty & Status */}
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-900 pt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-800 pt-3">
                 <div className="space-y-1">
                   <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Difficulty</span>
                   <div className="flex gap-1.5 pt-1">
@@ -1486,19 +2481,19 @@ export default function StudyNotes() {
 
                       {/* CARD DETAILS (Expanded / Collapsible view) */}
                       {isExpanded && (
-                        <div className="mt-4 border-t border-slate-900 pt-4 space-y-4 text-xs">
+                        <div className="mt-4 border-t border-slate-800 pt-4 space-y-4 text-xs">
                           {isEditing ? (
                             // Inline Edit fields
                             <div className="space-y-3 p-3 rounded-2xl border border-slate-800 bg-slate-900/50">
                               <span className="block text-[10px] font-extrabold uppercase text-purple-400 mb-2">Edit Word Details</span>
                               
-                              <div className="grid grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <label className="block text-[10px] font-bold text-slate-400">
                                   Word name
                                   <input 
                                     value={editFields.word || ''} 
                                     onChange={(e) => setEditFields({ ...editFields, word: e.target.value })}
-                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
+                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100"
                                   />
                                 </label>
                                 <label className="block text-[10px] font-bold text-slate-400">
@@ -1506,18 +2501,18 @@ export default function StudyNotes() {
                                   <input 
                                     value={editFields.partOfSpeech || ''} 
                                     onChange={(e) => setEditFields({ ...editFields, partOfSpeech: e.target.value })}
-                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
+                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100"
                                   />
                                 </label>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <label className="block text-[10px] font-bold text-slate-400">
                                   Category
                                   <select 
                                     value={editFields.category || ''} 
                                     onChange={(e) => setEditFields({ ...editFields, category: e.target.value })}
-                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-white"
+                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-slate-100"
                                   >
                                     <option value="Coding Term">Coding Term</option>
                                     <option value="General English">General English</option>
@@ -1530,7 +2525,7 @@ export default function StudyNotes() {
                                   <select 
                                     value={editFields.difficulty || ''} 
                                     onChange={(e) => setEditFields({ ...editFields, difficulty: e.target.value })}
-                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-white"
+                                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-slate-100"
                                   >
                                     <option value="Easy">Easy</option>
                                     <option value="Medium">Medium</option>
@@ -1544,7 +2539,7 @@ export default function StudyNotes() {
                                 <textarea 
                                   value={editFields.definition || ''} 
                                   onChange={(e) => setEditFields({ ...editFields, definition: e.target.value })}
-                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-sans"
+                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-sans"
                                   rows={2}
                                 />
                               </label>
@@ -1554,7 +2549,7 @@ export default function StudyNotes() {
                                 <textarea 
                                   value={editFields.example || ''} 
                                   onChange={(e) => setEditFields({ ...editFields, example: e.target.value })}
-                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-sans"
+                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-sans"
                                   rows={2}
                                 />
                               </label>
@@ -1564,7 +2559,7 @@ export default function StudyNotes() {
                                 <textarea 
                                   value={editFields.codeContext || ''} 
                                   onChange={(e) => setEditFields({ ...editFields, codeContext: e.target.value })}
-                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono"
+                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono"
                                   rows={2}
                                 />
                               </label>
@@ -1574,7 +2569,7 @@ export default function StudyNotes() {
                                 <input 
                                   value={editFields.mnemonic || ''} 
                                   onChange={(e) => setEditFields({ ...editFields, mnemonic: e.target.value })}
-                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-sans"
+                                  className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-sans"
                                 />
                               </label>
 
@@ -1615,7 +2610,7 @@ export default function StudyNotes() {
 
                               {/* Coding Context Example */}
                               {vocab.codeContext && (
-                                <div className="bg-slate-950/70 p-3 rounded-2xl border border-slate-900">
+                                <div className="bg-slate-950/70 p-3 rounded-2xl border border-slate-800">
                                   <span className="block text-[9px] font-bold uppercase tracking-wider text-purple-400 mb-1">💻 Coding & Tech Context</span>
                                   <code className="block text-[11px] text-slate-300 font-mono leading-relaxed">{vocab.codeContext}</code>
                                 </div>
@@ -1637,14 +2632,14 @@ export default function StudyNotes() {
                                     src={vocab.image}
                                     alt="Visual reference"
                                     className="max-h-40 rounded-2xl object-contain border border-slate-800 cursor-pointer hover:border-purple-500/30 transition"
-                                    onClick={() => window.open(vocab.image, '_blank')}
-                                    title="Click to open full size"
+                                    onClick={() => setLightboxImage(vocab.image)}
+                                    title="Click to view full size"
                                   />
                                 </div>
                               )}
 
                               {/* Action Footer */}
-                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-900">
+                              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
                                 <button
                                   type="button"
                                   onClick={() => startEditing(vocab)}
@@ -1663,6 +2658,224 @@ export default function StudyNotes() {
                 })
               )}
             </div>
+          </div>
+        </div>
+      ) : (
+        // --- CODING ARENA VIEW ---
+        <div className="grid gap-6 lg:grid-cols-12 animate-fade-in h-auto lg:h-[780px]">
+          {/* LEFT SIDE: CHALLENGE SELECTOR & CODE EDITOR (lg:col-span-7) */}
+          <div className="lg:col-span-7 flex flex-col rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg min-h-[500px] lg:h-full">
+            {/* Header: Selector & Difficulty */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3.5 mb-4 select-none">
+              <div className="flex gap-4 items-center flex-wrap">
+                <div className="space-y-1">
+                  <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-550">Language</span>
+                  <select
+                    value={codingLanguage}
+                    onChange={(e) => handleSelectLanguage(e.target.value)}
+                    className="rounded-xl border border-slate-750 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500 font-bold cursor-pointer"
+                  >
+                    <option value="javascript">JavaScript / Node / MongoDB</option>
+                    <option value="rust">Rust Language 🦀</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-555">Practice Challenge</span>
+                  <select
+                    value={codingChallenge ? codingChallenge.id : ''}
+                    onChange={(e) => handleSelectChallenge(e.target.value)}
+                    className="rounded-xl border border-slate-750 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500 font-bold cursor-pointer"
+                  >
+                    {codingChallenges.filter(c => c.language === codingLanguage).map(c => (
+                      <option key={c.id} value={c.id}>{c.title}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {codingChallenge && (
+                <div className="flex gap-2">
+                  <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${
+                    codingChallenge.difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                    codingChallenge.difficulty === 'Hard' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+                    'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  }`}>
+                    {codingChallenge.difficulty}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {codingChallenge ? (
+              <>
+                {/* Challenge Description */}
+                <div className="p-3.5 rounded-2xl bg-slate-900/30 border border-slate-800 mb-4 text-xs select-text">
+                  <span className="font-bold text-slate-300">🎯 Objective:</span>
+                  <p className="text-slate-400 mt-1 leading-relaxed">{codingChallenge.description}</p>
+                </div>
+
+                {/* Editor Label & Controls */}
+                <div className="flex justify-between items-center mb-2 select-none">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">Source Editor</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (codingChallenge.files) {
+                          setUserCode(codingChallenge.files)
+                        } else {
+                          setUserCode(codingChallenge.starterCode)
+                        }
+                      }}
+                      className="px-2.5 py-1 text-[9px] font-bold border border-slate-800 bg-slate-900/50 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-slate-200 transition pointer-events-auto cursor-pointer"
+                      title="Reset code back to starter template"
+                    >
+                      Reset Template 🔄
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (codingChallenge.language === 'rust') {
+                          runRustCode(codingChallenge.id, userCode)
+                        } else if (codingChallenge.id === 'js-complete-stack') {
+                          runCompleteStackCode(userCode)
+                        } else {
+                          runBackendCode(userCode)
+                        }
+                      }}
+                      className="px-3.5 py-1 text-[9px] font-black bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-lg transition shadow-md shadow-purple-500/10 flex items-center gap-1 pointer-events-auto cursor-pointer"
+                    >
+                      <span>▶</span> Run Code
+                    </button>
+                  </div>
+                </div>
+
+                {/* File Switcher Tabs (For Multi-file Challenges) */}
+                {codingChallenge.files && activeFile && (
+                  <div className="flex flex-wrap gap-1 mb-2 bg-slate-900/60 p-1 rounded-xl border border-slate-800 select-none">
+                    {Object.keys(codingChallenge.files).map((fileName) => {
+                      const isActive = activeFile === fileName;
+                      return (
+                        <button
+                          key={fileName}
+                          type="button"
+                          onClick={() => setActiveFile(fileName)}
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                            isActive
+                              ? 'bg-slate-950 text-purple-400 border border-slate-800 shadow-sm'
+                              : 'text-slate-400 hover:text-slate-200 bg-transparent hover:bg-slate-950/30'
+                          }`}
+                        >
+                          <span className={isActive ? 'text-purple-400' : 'text-slate-500'}>📄</span>
+                          {fileName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Editor Container */}
+                <div className="flex-1 min-h-0 relative border border-slate-800 rounded-2xl overflow-hidden bg-slate-950">
+                  <textarea
+                    value={activeFile ? (userCode[activeFile] || '') : userCode}
+                    onChange={(e) => {
+                      if (activeFile) {
+                        setUserCode(prev => ({
+                          ...prev,
+                          [activeFile]: e.target.value
+                        }))
+                      } else {
+                        setUserCode(e.target.value)
+                      }
+                    }}
+                    className="w-full h-full p-4 bg-transparent resize-none border-0 text-[11px] font-mono text-slate-300 placeholder-slate-650 focus:outline-none leading-relaxed overflow-y-auto"
+                    placeholder="// Write your code here..."
+                    spellCheck={false}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-xs py-20">
+                No challenges available for this language yet.
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT SIDE: LIVE OUTPUT / MOCK TERMINAL (lg:col-span-5) */}
+          <div className="lg:col-span-5 flex flex-col rounded-3xl border border-slate-800 bg-slate-950/90 p-5 shadow-lg min-h-[350px] lg:h-full">
+            <div className="border-b border-slate-800 mb-4 select-none">
+              <h4 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                Execution Terminal Output
+              </h4>
+              <span className="text-[9px] text-slate-500 mt-0.5">
+                {codingLanguage === 'rust' 
+                  ? 'Simulated Rustc cargo compiler and error checking console' 
+                  : 'Console outputs and evaluation logs'
+                }
+              </span>
+            </div>
+
+            {/* Backend Output Terminal Console */}
+            <div className="flex-1 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 font-mono text-xs overflow-y-auto flex flex-col space-y-1.5 select-text">
+              <div className="text-[10px] text-slate-500 border-b border-slate-800 pb-1.5 mb-2 select-none uppercase font-bold tracking-widest flex justify-between">
+                <span>console.logs</span>
+                <button 
+                  onClick={() => setTerminalLogs([])}
+                  className="text-[9px] text-slate-550 hover:text-slate-450 transition pointer-events-auto cursor-pointer"
+                >
+                  Clear Terminal
+                </button>
+              </div>
+              
+              {terminalLogs.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-[10px] space-y-1 select-none font-sans py-20 text-center">
+                  <span>💻 Terminal is Idle</span>
+                  <span>Click 'Run Code' to execute your code and view console prints here.</span>
+                </div>
+              ) : (
+                terminalLogs.map((log, lIdx) => (
+                  <div 
+                    key={lIdx} 
+                    className={`leading-relaxed border-l-2 pl-2 ${
+                      log.startsWith('🔴') || log.startsWith('error')
+                        ? 'text-rose-455 border-rose-500 bg-rose-500/5 py-1 pr-1 rounded-r-md' 
+                        : log.startsWith('✓') || log.startsWith('GET Response') || log.startsWith('POST Valid') || log.startsWith('Generated JWT') || log.startsWith('Division succeeded') || log.startsWith('Summary:') || log.startsWith('The length of')
+                        ? 'text-emerald-455 border-emerald-500' 
+                        : log.startsWith('   Compiling') || log.startsWith('    Finished') || log.startsWith('     Running')
+                        ? 'text-purple-400 border-purple-500/40 font-bold'
+                        : 'text-slate-300 border-slate-750/40'
+                    }`}
+                  >
+                    {log}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox / Image Preview Modal */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-md animate-fade-in p-4 cursor-zoom-out select-none"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-5xl max-h-[90vh] flex flex-col items-center justify-center">
+            <img 
+              src={lightboxImage} 
+              alt="Fullscreen Zoom" 
+              className="max-w-full max-h-[85vh] rounded-2xl border border-slate-800 shadow-2xl object-contain animate-scale-up"
+            />
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-4 right-4 bg-slate-900/90 border border-slate-750 hover:bg-slate-800 text-white rounded-full w-9 h-9 flex items-center justify-center text-sm font-bold shadow-lg transition"
+              title="Close image"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}

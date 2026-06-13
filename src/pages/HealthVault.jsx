@@ -323,7 +323,7 @@ export default function HealthVault() {
         <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-gradient-to-br from-purple-500/10 via-pink-600/5 to-transparent rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
         
         <div className="space-y-3 z-10 max-w-lg">
-          <h2 className="text-2xl font-bold text-white tracking-tight">Lumina Health Vault 🥗</h2>
+          <h2 className="text-2xl font-bold text-slate-100 tracking-tight">Lumina Health Vault 🥗</h2>
           <p className="text-slate-400 text-sm leading-relaxed">
             Track protein intake, manage calorie goals, and optimize your fitness fuel layout.
           </p>
@@ -335,7 +335,7 @@ export default function HealthVault() {
             <button
               type="button"
               onClick={() => setIsConfigOpen(!isConfigOpen)}
-              className="text-[10px] font-extrabold px-3 py-1 rounded-full bg-slate-950 border border-slate-800 hover:text-white transition"
+              className="text-[10px] font-extrabold px-3 py-1 rounded-full bg-slate-950 border border-slate-800 hover:text-slate-100 transition"
             >
               ⚙️ Config Goals
             </button>
@@ -464,7 +464,7 @@ export default function HealthVault() {
         <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg flex flex-col justify-between min-h-[380px]">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Nutrition Velocity</h3>
+              <h3 className="text-base font-bold text-slate-100 tracking-tight">Nutrition Velocity</h3>
               <p className="text-xs text-slate-500 mt-0.5">Dual-axis calories and protein intake trend.</p>
             </div>
 
@@ -513,12 +513,12 @@ export default function HealthVault() {
                     </filter>
                   </defs>
 
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.02)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
                   <XAxis dataKey="label" stroke="#475569" fontSize={10} fontWeight={600} tickLine={false} axisLine={false} dy={8} />
                   <YAxis yAxisId="left" stroke="#a855f7" fontSize={9} fontWeight={600} tickLine={false} axisLine={false} tickFormatter={formatCaloriesYAxis} />
                   <YAxis yAxisId="right" orientation="right" stroke="#ec4899" fontSize={9} fontWeight={600} tickLine={false} axisLine={false} tickFormatter={formatProteinYAxis} />
                   
-                  <Tooltip content={<CustomHealthTooltip />} cursor={{ stroke: 'rgba(255, 255, 255, 0.04)', strokeWidth: 1 }} />
+                  <Tooltip content={<CustomHealthTooltip />} cursor={{ stroke: 'var(--chart-cursor)', strokeWidth: 1 }} />
                   
                   <Area 
                     yAxisId="left"
@@ -529,7 +529,7 @@ export default function HealthVault() {
                     fill="url(#caloriesGradient)" 
                     strokeWidth={3} 
                     filter="url(#neonHealthGlow)"
-                    activeDot={{ r: 5, stroke: '#090d16', strokeWidth: 2, fill: '#a855f7' }} 
+                    activeDot={{ r: 5, stroke: 'var(--chart-dot-stroke)', strokeWidth: 2, fill: '#a855f7' }} 
                   />
                   <Area 
                     yAxisId="right"
@@ -539,7 +539,7 @@ export default function HealthVault() {
                     stroke="#ec4899" 
                     fill="url(#proteinGradient)" 
                     strokeWidth={2.5} 
-                    activeDot={{ r: 4, stroke: '#090d16', strokeWidth: 2, fill: '#ec4899' }} 
+                    activeDot={{ r: 4, stroke: 'var(--chart-dot-stroke)', strokeWidth: 2, fill: '#ec4899' }} 
                   />
                   <Legend 
                     verticalAlign="top" 
@@ -557,7 +557,7 @@ export default function HealthVault() {
         {/* Record Food Manual Input Form */}
         <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg flex flex-col justify-between min-h-[380px]">
           <div>
-            <h3 className="text-base font-bold text-white tracking-tight">Log Fuel Intake</h3>
+            <h3 className="text-base font-bold text-slate-100 tracking-tight">Log Fuel Intake</h3>
             <p className="text-xs text-slate-500 mt-0.5">Quick nutrition entries bypass note logs.</p>
           </div>
 
@@ -623,7 +623,7 @@ export default function HealthVault() {
       <section className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-lg space-y-6">
         <div className="flex justify-between items-center border-b border-slate-800/80 pb-4">
           <div>
-            <h3 className="text-base font-bold text-white tracking-tight">Nutrition Logs</h3>
+            <h3 className="text-base font-bold text-slate-100 tracking-tight">Nutrition Logs</h3>
             <p className="text-xs text-slate-500 mt-0.5">Food entries parsed from markdown notes & logged manually.</p>
           </div>
           <span className="text-xs font-bold px-3 py-1 bg-slate-950 border border-slate-850 rounded-xl text-slate-400">

@@ -58,7 +58,7 @@ export default function AnalyticsChart({ data }) {
             </filter>
           </defs>
 
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
           
           <XAxis 
             dataKey="label" 
@@ -80,7 +80,7 @@ export default function AnalyticsChart({ data }) {
             dx={-8}
           />
           
-          <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255, 255, 255, 0.05)', strokeWidth: 1 }} />
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--chart-cursor)', strokeWidth: 1 }} />
           
           {/* Main Tasks Done area line */}
           <Area 
@@ -91,7 +91,7 @@ export default function AnalyticsChart({ data }) {
             fill="url(#tasksGradient)" 
             strokeWidth={3} 
             filter="url(#neonGlow)"
-            activeDot={{ r: 5, stroke: '#090d16', strokeWidth: 2, fill: '#818cf8' }}
+            activeDot={{ r: 5, stroke: 'var(--chart-dot-stroke)', strokeWidth: 2, fill: '#818cf8' }}
           />
 
           {/* Conditional Habit Pillars Checked area line */}
@@ -104,7 +104,7 @@ export default function AnalyticsChart({ data }) {
               fill="url(#pillarsGradient)" 
               strokeWidth={3} 
               filter="url(#neonGlow)"
-              activeDot={{ r: 5, stroke: '#090d16', strokeWidth: 2, fill: '#a855f7' }}
+              activeDot={{ r: 5, stroke: 'var(--chart-dot-stroke)', strokeWidth: 2, fill: '#a855f7' }}
             />
           )}
 

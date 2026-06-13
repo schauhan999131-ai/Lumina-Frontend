@@ -15,6 +15,7 @@ export const useAppStore = create(
       profilePicture: '',
       occupation: 'Developer',
       isSubscribedYoutube: false,
+      theme: 'dark',
       
       // Data State
       tasks: [],
@@ -319,6 +320,8 @@ export const useAppStore = create(
         }
       },
 
+      setTheme: (theme) => set({ theme }),
+
       // Admin actions
       getAdminUsers: async () => {
         try {
@@ -376,6 +379,7 @@ export const useAppStore = create(
         profilePicture: state.profilePicture,
         occupation: state.occupation,
         isSubscribedYoutube: state.isSubscribedYoutube,
+        theme: state.theme,
       }),
     }
   )

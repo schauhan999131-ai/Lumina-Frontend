@@ -526,13 +526,13 @@ export default function FocusTimer() {
             <div className="space-y-1">
               <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Sessions Completed</span>
               <div className="flex items-center gap-2">
-                <span className="text-2xl font-black text-white font-mono">{sessionsCompleted}</span>
+                <span className="text-2xl font-black text-slate-100 font-mono">{sessionsCompleted}</span>
                 <span className="text-lg">🎯</span>
               </div>
               <span className="block text-[9px] text-slate-500">Intervals completed today</span>
             </div>
 
-            <div className="space-y-1 border-l border-slate-900 pl-4">
+            <div className="space-y-1 border-l border-slate-800 pl-4">
               <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Total Focus Time</span>
               <div className="flex items-center gap-2">
                 <span className="text-2xl font-black text-purple-400 font-mono">{focusMinutes}</span>
@@ -580,7 +580,7 @@ export default function FocusTimer() {
             
             <div className="space-y-3.5">
               {/* Work Duration */}
-              <div className="flex items-center justify-between border-b border-slate-950 pb-2.5">
+              <div className="flex items-center justify-between border-b border-slate-850 pb-2.5">
                 <div>
                   <span className="text-xs font-bold text-slate-300">Pomodoro Mode</span>
                   <span className="block text-[10px] text-slate-500">Active focus session length</span>
@@ -605,7 +605,7 @@ export default function FocusTimer() {
               </div>
 
               {/* Short Break */}
-              <div className="flex items-center justify-between border-b border-slate-950 pb-2.5">
+              <div className="flex items-center justify-between border-b border-slate-850 pb-2.5">
                 <div>
                   <span className="text-xs font-bold text-slate-300">Short Break Mode</span>
                   <span className="block text-[10px] text-slate-500">Quick rest cycle length</span>
@@ -658,7 +658,7 @@ export default function FocusTimer() {
 
           {/* FOCUS HISTORY LOG */}
           <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 space-y-4 shadow-lg shadow-slate-950/20 flex-1 flex flex-col justify-between">
-            <div className="flex justify-between items-center border-b border-slate-950 pb-3">
+            <div className="flex justify-between items-center border-b border-slate-850 pb-3">
               <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
                 <span>📋</span>
                 <span>Focus History Log</span>

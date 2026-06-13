@@ -75,6 +75,10 @@ export default function Dashboard() {
   const getTaskStats = useAppStore((state) => state.getTaskStats)
   const updateTask = useAppStore((state) => state.updateTask)
   const removeTask = useAppStore((state) => state.removeTask)
+  
+  const theme = useAppStore((state) => state.theme) || 'dark'
+  const setTheme = useAppStore((state) => state.setTheme)
+  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')
 
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -521,7 +525,7 @@ export default function Dashboard() {
         <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-gradient-to-br from-indigo-500/10 via-purple-600/5 to-transparent rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
         
         <div className="space-y-3.5 z-10 max-w-lg">
-          <h2 className="text-2xl font-bold text-white tracking-tight">Welcome to your Focus Workspace!</h2>
+          <h2 className="text-2xl font-bold text-slate-100 tracking-tight">Welcome to your Focus Workspace!</h2>
           <p className="text-slate-400 text-sm leading-relaxed">
             Uninterrupted building and learning starts here. Plan, record notes, and block deep work timers.
           </p>
@@ -531,8 +535,18 @@ export default function Dashboard() {
           </div>
         </div>
         
-        <div className="hidden md:flex items-center justify-center w-24 h-24 rounded-2xl bg-slate-950/60 border border-slate-800 text-4xl shadow-inner z-10 animate-bounce-slow mr-4">
-          {occupationFloatingEmojis[occupation] || '⚡'}
+        <div className="flex flex-col items-end gap-3.5 z-10">
+          <div className="hidden md:flex items-center justify-center w-20 h-20 rounded-2xl bg-slate-950/60 border border-slate-800 text-3xl shadow-inner animate-bounce-slow">
+            {occupationFloatingEmojis[occupation] || '⚡'}
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-800 text-[10px] font-black text-slate-300 hover:text-slate-100 transition-all shadow-md active:scale-95 cursor-pointer whitespace-nowrap"
+          >
+            <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
+            <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+          </button>
         </div>
       </div>
 
@@ -548,7 +562,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="mt-2 z-10">
-            <p className="text-3xl font-extrabold text-white leading-none tracking-tight">{taskStats?.todayCompletedCount || 0}</p>
+            <p className="text-3xl font-extrabold text-slate-100 leading-none tracking-tight">{taskStats?.todayCompletedCount || 0}</p>
             <p className="text-[10px] text-emerald-400 mt-2 font-semibold">Done in this day planning</p>
           </div>
         </div>
@@ -563,7 +577,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="mt-2 z-10">
-            <p className="text-3xl font-extrabold text-white leading-none tracking-tight">{gamifiedStreak.streak} {gamifiedStreak.streak === 1 ? 'day' : 'days'}</p>
+            <p className="text-3xl font-extrabold text-slate-100 leading-none tracking-tight">{gamifiedStreak.streak} {gamifiedStreak.streak === 1 ? 'day' : 'days'}</p>
             <p className="text-[10px] text-amber-500 mt-2 font-semibold">Habit streak active!</p>
           </div>
         </div>
@@ -578,7 +592,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="mt-2 z-10">
-            <p className="text-3xl font-extrabold text-white leading-none tracking-tight">{focusMinutes}m</p>
+            <p className="text-3xl font-extrabold text-slate-100 leading-none tracking-tight">{focusMinutes}m</p>
             <p className="text-[10px] text-indigo-400 mt-2 font-semibold">Total focus work completed</p>
           </div>
         </div>
@@ -593,7 +607,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="mt-2 z-10">
-            <p className="text-3xl font-extrabold text-white leading-none tracking-tight">{taskStats?.totalCompletedCount || 0}</p>
+            <p className="text-3xl font-extrabold text-slate-100 leading-none tracking-tight">{taskStats?.totalCompletedCount || 0}</p>
             <p className="text-[10px] text-purple-400 mt-2 font-semibold">Workspace targets accomplished</p>
           </div>
         </div>
@@ -607,7 +621,7 @@ export default function Dashboard() {
         <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg flex flex-col justify-between min-h-[380px]">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Task & Habit Performance</h3>
+              <h3 className="text-base font-bold text-slate-100 tracking-tight">Task & Habit Performance</h3>
               <p className="text-xs text-slate-500 mt-0.5">Dual-metric glowing contributions chart.</p>
             </div>
             
@@ -644,7 +658,7 @@ export default function Dashboard() {
         <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg flex flex-col justify-between gap-6 min-h-[380px]">
           <div className="space-y-4">
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Workspace Status</h3>
+              <h3 className="text-base font-bold text-slate-100 tracking-tight">Workspace Status</h3>
               <p className="text-xs text-slate-500 mt-0.5">Task completion distribution statistics.</p>
             </div>
 
@@ -725,7 +739,7 @@ export default function Dashboard() {
         <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg flex flex-col justify-between gap-4 lg:col-span-1 min-h-[360px]">
           <div className="space-y-1.5 border-b border-slate-800/80 pb-3">
             <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-100 tracking-tight flex items-center gap-2">
                 <span>🎯</span> Daily Pillars
                 <button
                   type="button"
@@ -865,7 +879,7 @@ export default function Dashboard() {
         {/* Column 2: Focus Consistency Heatmap & Levels */}
         <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg flex flex-col justify-between gap-4 lg:col-span-1 min-h-[360px]">
           <div className="space-y-1.5 border-b border-slate-800/80 pb-3">
-            <h3 className="text-sm font-bold text-white tracking-tight">Consistency Grid</h3>
+            <h3 className="text-sm font-bold text-slate-100 tracking-tight">Consistency Grid</h3>
             <p className="text-[10px] text-slate-500">28 days tracking contribution grids.</p>
           </div>
 
@@ -921,7 +935,7 @@ export default function Dashboard() {
         <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg space-y-4 flex flex-col justify-between lg:col-span-2 min-h-[360px]">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800/80 pb-3">
             <div>
-              <h3 className="text-sm font-bold text-white tracking-tight">🗣️ English Practice Lab</h3>
+              <h3 className="text-sm font-bold text-slate-100 tracking-tight">🗣️ English Practice Lab</h3>
               <p className="text-[10px] text-slate-500 mt-0.5">Write technical logs & talk specs in English.</p>
             </div>
 
@@ -1046,7 +1060,7 @@ export default function Dashboard() {
       <section className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-lg space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800/80 pb-5">
           <div>
-            <h3 className="text-base font-bold text-white tracking-tight">Workspace Tasks Check-list</h3>
+            <h3 className="text-base font-bold text-slate-100 tracking-tight">Workspace Tasks Check-list</h3>
             <p className="text-xs text-slate-500 mt-0.5">Inspect and toggle status of planning tasks directly from the dashboard.</p>
           </div>
 
@@ -1121,7 +1135,7 @@ export default function Dashboard() {
                   key={task._id} 
                   className={`p-4 rounded-2xl bg-slate-950 border transition-all duration-200 flex flex-col justify-between gap-4 ${
                     isCompleted 
-                      ? 'border-slate-900 opacity-50' 
+                      ? 'border-slate-850 opacity-50' 
                       : 'border-slate-800/80 hover:border-indigo-500/20'
                   }`}
                 >

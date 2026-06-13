@@ -46,6 +46,7 @@ function MainLayout() {
   const profilePicture = useAppStore((state) => state.profilePicture)
   const occupation = useAppStore((state) => state.occupation)
   const isSubscribedYoutube = useAppStore((state) => state.isSubscribedYoutube)
+  const theme = useAppStore((state) => state.theme) || 'dark'
   
   const logout = useAppStore((state) => state.logout)
   const checkAuth = useAppStore((state) => state.checkAuth)
@@ -82,6 +83,14 @@ function MainLayout() {
   useEffect(() => {
     checkAuth()
   }, [checkAuth])
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light')
+    } else {
+      document.documentElement.classList.remove('light')
+    }
+  }, [theme])
 
   // Open profile modal and sync current state
   const openProfileModal = () => {
@@ -146,7 +155,7 @@ function MainLayout() {
             <span className="text-xl">⚡</span>
           </div>
           <div>
-            <h1 className="text-xl font-extrabold text-white tracking-tight">Lumina</h1>
+            <h1 className="text-xl font-extrabold text-slate-100 tracking-tight">Lumina</h1>
             <p className="text-[10px] text-purple-400 font-bold uppercase tracking-widest mt-0.5">Deep Work Mode</p>
           </div>
         </div>
@@ -163,7 +172,7 @@ function MainLayout() {
                 `flex items-center gap-3 px-4 py-3 text-sm font-semibold rounded-xl transition duration-200 ${
                   isActive
                     ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/15'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                 }`
               }
             >
@@ -175,7 +184,7 @@ function MainLayout() {
       </div>
 
       {/* Sidebar Footer Controls */}
-      <div className="space-y-4 pt-6 border-t border-slate-900">
+      <div className="space-y-4 pt-6 border-t border-slate-800">
         <button
           type="button"
           onClick={() => {
@@ -231,7 +240,7 @@ function MainLayout() {
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl font-black text-white tracking-tight">YouTube Subscription Required</h2>
+              <h2 className="text-2xl font-black text-slate-100 tracking-tight">YouTube Subscription Required</h2>
               <p className="text-slate-400 text-sm leading-relaxed">
                 To activate and unlock the **Lumina Personal Growth & Wealth Operating System**, please subscribe to the Coding Yatra YouTube channel.
               </p>
@@ -290,12 +299,12 @@ function MainLayout() {
       {isAuthenticated ? (
         <>
           {/* Desktop Left Sidebar */}
-          <aside className="hidden lg:block w-64 h-screen sticky top-0 bg-slate-950/80 border-r border-slate-900 p-6 z-40 backdrop-blur-md">
+          <aside className="hidden lg:block w-64 h-screen sticky top-0 bg-slate-950/80 border-r border-slate-800 p-6 z-40 backdrop-blur-md">
             {sidebarContent}
           </aside>
 
           {/* Mobile Top Header */}
-          <header className="lg:hidden flex justify-between items-center bg-slate-950/85 backdrop-blur-md border-b border-slate-900 px-6 py-4 sticky top-0 z-40">
+          <header className="lg:hidden flex justify-between items-center bg-slate-950/85 backdrop-blur-md border-b border-slate-800 px-6 py-4 sticky top-0 z-40">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -306,7 +315,7 @@ function MainLayout() {
               </button>
               <div className="flex items-center gap-1.5">
                 <span className="text-lg">⚡</span>
-                <span className="text-lg font-bold text-white tracking-tight">Lumina</span>
+                <span className="text-lg font-bold text-slate-100 tracking-tight">Lumina</span>
               </div>
             </div>
 
@@ -328,7 +337,7 @@ function MainLayout() {
           {/* Mobile Drawer Overlay */}
           {isMobileMenuOpen && (
             <div className="lg:hidden fixed inset-0 bg-black/60 z-50 flex">
-              <div className="w-64 bg-slate-950 border-r border-slate-900 p-6 h-full flex flex-col justify-between animate-slide-in">
+              <div className="w-64 bg-slate-950 border-r border-slate-800 p-6 h-full flex flex-col justify-between animate-slide-in">
                 {sidebarContent}
               </div>
               <div className="flex-1" onClick={() => setIsMobileMenuOpen(false)}></div>
@@ -338,7 +347,7 @@ function MainLayout() {
           {/* Main Content Area */}
           <div className="flex-1 flex flex-col min-w-0">
             {/* Desktop Top Header */}
-            <header className="hidden lg:flex justify-between items-center bg-slate-950/50 backdrop-blur-sm border-b border-slate-900 px-8 py-4 sticky top-0 z-30">
+            <header className="hidden lg:flex justify-between items-center bg-slate-950/50 backdrop-blur-sm border-b border-slate-800 px-8 py-4 sticky top-0 z-30">
               <div className="text-xs text-slate-500 font-medium">
                 Deep Work Workspace • Lumina Companion
               </div>
@@ -387,7 +396,7 @@ function MainLayout() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 shadow-2xl animate-fade-in text-slate-200">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-white">Edit Profile Settings</h3>
+              <h3 className="text-lg font-bold text-slate-100">Edit Profile Settings</h3>
               <button 
                 type="button" 
                 onClick={() => setIsProfileModalOpen(false)}
@@ -496,7 +505,7 @@ function MainLayout() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl text-slate-300">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
                 <span>⚡</span>
                 <span>Lumina Deep Work Mode Help</span>
               </h3>
