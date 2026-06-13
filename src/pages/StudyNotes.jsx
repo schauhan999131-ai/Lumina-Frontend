@@ -155,7 +155,7 @@ const parseInlineFormatting = (text, images = [], onImageClick) => {
                 <img
                   src={foundImg.src}
                   alt={t.alt || 'Pasted Image'}
-                  className="max-h-80 w-auto object-contain rounded-xl cursor-zoom-in hover:scale-[1.01] transition duration-300 animate-scale-up"
+                  className="max-h-48 w-auto object-contain rounded-xl cursor-zoom-in hover:scale-[1.01] transition duration-300 animate-scale-up"
                   onClick={() => onImageClick(foundImg.src)}
                 />
                 <span className="absolute bottom-2 right-2 bg-slate-900/80 border border-slate-850 px-2.5 py-0.5 rounded-md text-[9px] text-slate-400 font-bold opacity-0 group-hover/inline-img:opacity-100 transition-opacity">
@@ -1824,16 +1824,16 @@ export default function StudyNotes() {
                       )}
 
                       {/* Pasted Images Gallery */}
-                      {(activeNote.images || []).length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-slate-800 space-y-2">
+                      {workspaceMode === 'edit' && (activeNote.images || []).length > 0 && (
+                        <div className="mt-2 pt-2.5 border-t border-slate-800 space-y-1.5 flex-shrink-0">
                           <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Pasted Images Gallery</span>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-row overflow-x-auto gap-2 py-1.5 px-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
                             {(activeNote.images || []).map((img) => (
-                              <div key={img.id} className="relative group/img">
+                              <div key={img.id} className="relative group/img flex-shrink-0">
                                 <img
                                   src={img.src}
                                   alt=""
-                                  className="h-24 w-auto max-w-[200px] rounded-xl border border-slate-800 object-cover cursor-pointer hover:border-purple-500/30 transition shadow-sm"
+                                  className="h-16 w-auto max-w-[120px] rounded-xl border border-slate-800 object-cover cursor-pointer hover:border-purple-500/30 transition shadow-sm"
                                   onClick={() => setLightboxImage(img.src)}
                                   title="Click to view full size"
                                 />
@@ -1854,7 +1854,7 @@ export default function StudyNotes() {
                               </div>
                             ))}
                           </div>
-                          <p className="text-[9px] text-slate-600">Paste more images with Ctrl+V / Cmd+V in the text area above</p>
+                          <p className="text-[8px] text-slate-600">Paste more images with Ctrl+V / Cmd+V in the text area above</p>
                         </div>
                       )}
                     </div>
