@@ -1212,7 +1212,7 @@ export default function StudyNotes() {
     try {
       const newNoteData = {
         title: 'Untitled Note',
-        subject: 'Software Engineering',
+        subject: selectedSubject !== 'All' ? selectedSubject : 'Software Engineering',
         content: '',
         todos: [],
         images: []
@@ -1240,8 +1240,15 @@ export default function StudyNotes() {
       parseNoteHealth(id, '').catch((err) => console.error(err))
 
       if (activeNoteId === id) {
-        if (updatedNotes.length > 0) {
-          setActiveNoteId(updatedNotes[0]._id || updatedNotes[0].id)
+        // Find the next note from the filtered list (excluding the deleted note)
+        const remainingFiltered = updatedNotes.filter((n) => {
+          const matchesSubject = selectedSubject === 'All' || n.subject === selectedSubject
+          const matchesQuery = n.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                               (n.content && n.content.toLowerCase().includes(searchQuery.toLowerCase()))
+          return matchesSubject && matchesQuery
+        })
+        if (remainingFiltered.length > 0) {
+          setActiveNoteId(remainingFiltered[0]._id || remainingFiltered[0].id)
         } else {
           setActiveNoteId(null)
         }
@@ -1644,7 +1651,22 @@ export default function StudyNotes() {
               <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Filter Topic</span>
               <select
                 value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setSelectedSubject(val)
+                  // Auto-switch active note to the first matching note in the filtered list
+                  const matches = notes.filter((n) => {
+                    const matchesSubject = val === 'All' || n.subject === val
+                    const matchesQuery = n.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                         (n.content && n.content.toLowerCase().includes(searchQuery.toLowerCase()))
+                    return matchesSubject && matchesQuery
+                  })
+                  if (matches.length > 0) {
+                    setActiveNoteId(matches[0]._id || matches[0].id)
+                  } else {
+                    setActiveNoteId(null)
+                  }
+                }}
                 className="w-full rounded-xl border border-slate-750 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
               >
                 <option value="All">All Topics</option>
@@ -1841,7 +1863,7 @@ export default function StudyNotes() {
                       {/* Title input */}
                       <input
                         value={activeNote.title || ''}
-                        onChange={(e) => updateNote(activeNote.id, { title: e.target.value })}
+                        onChange={(e) => updateNote(activeNote._id || activeNote.id, { title: e.target.value })}
                         className="w-full bg-transparent border-b border-transparent hover:border-slate-800 focus:border-purple-500/30 text-xl font-black text-slate-100 focus:outline-none py-1 mb-2"
                         placeholder="Untitled Note"
                       />
@@ -1853,7 +1875,7 @@ export default function StudyNotes() {
                           <input
                             list="note-subject-suggestions-workspace"
                             value={activeNote.subject || ''}
-                            onChange={(e) => updateNote(activeNote.id, { subject: e.target.value })}
+                            onChange={(e) => updateNote(activeNote._id || activeNote.id, { subject: e.target.value })}
                             className="bg-slate-900 border border-slate-850 hover:border-slate-700 text-xs px-2.5 py-1 rounded-xl text-slate-355 focus:outline-none focus:border-purple-500"
                             placeholder="Select or type a topic"
                           />
@@ -1894,8 +1916,8 @@ export default function StudyNotes() {
                       {workspaceMode === 'edit' ? (
                         <textarea
                           value={activeNote.content || ''}
-                          onChange={(e) => updateNote(activeNote.id, { content: e.target.value })}
-                          onPaste={(e) => handleNoteImagePaste(activeNote.id, e)}
+                          onChange={(e) => updateNote(activeNote._id || activeNote.id, { content: e.target.value })}
+                          onPaste={(e) => handleNoteImagePaste(activeNote._id || activeNote.id, e)}
                           className="w-full flex-1 mt-4 bg-transparent resize-none border-0 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none leading-relaxed overflow-y-auto pr-1 border-t border-slate-800 pt-3"
                           placeholder="Write about the project planning, system designs, or details (Supports basic Markdown tags like ### headers and - bullet lists)..."
                         />
@@ -1924,7 +1946,7 @@ export default function StudyNotes() {
                                   onClick={() => {
                                     const updated = (activeNote.images || []).filter(i => i.id !== img.id)
                                     const cleanedContent = (activeNote.content || '').replaceAll(`![Pasted Image](${img.id})`, '')
-                                    updateNote(activeNote.id, { 
+                                    updateNote(activeNote._id || activeNote.id, { 
                                       images: updated,
                                       content: cleanedContent 
                                     })
@@ -1975,7 +1997,7 @@ export default function StudyNotes() {
                       <form
                         onSubmit={(e) => {
                           e.preventDefault()
-                          handleAddTodo(activeNote.id)
+                          handleAddTodo(activeNote._id || activeNote.id)
                         }}
                         className="flex gap-2 mb-4"
                       >
@@ -2010,7 +2032,7 @@ export default function StudyNotes() {
                                 <input
                                   type="checkbox"
                                   checked={todo.completed}
-                                  onChange={() => handleToggleTodo(activeNote.id, todo.id)}
+                                  onChange={() => handleToggleTodo(activeNote._id || activeNote.id, todo.id)}
                                   className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 border-slate-700 bg-slate-900 cursor-pointer"
                                 />
                                 <span className={`text-xs truncate font-medium ${
@@ -2021,7 +2043,7 @@ export default function StudyNotes() {
                               </label>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteTodo(activeNote.id, todo.id)}
+                                onClick={() => handleDeleteTodo(activeNote._id || activeNote.id, todo.id)}
                                 className="opacity-0 group-hover:opacity-100 text-[10px] text-rose-455 hover:text-rose-300 px-1.5 py-0.5 rounded transition"
                               >
                                 ✕

@@ -331,6 +331,12 @@ export default function FocusTimer() {
   }, [])
 
   const handleCompletion = (completedMode) => {
+    // Get the scheduled completion time before clearing localStorage
+    const endTimeStr = localStorage.getItem('study_timer_endtime')
+    const completionTimestamp = endTimeStr 
+      ? new Date(parseInt(endTimeStr, 10)).toISOString() 
+      : new Date().toISOString()
+
     setIsActive(false)
     localStorage.setItem('study_timer_active', 'false')
     localStorage.removeItem('study_timer_endtime')
@@ -352,7 +358,7 @@ export default function FocusTimer() {
         id: Date.now(),
         type: 'work',
         duration: duration,
-        timestamp: new Date().toISOString()
+        timestamp: completionTimestamp
       }
       newHistory = [historyEntry, ...history]
 
@@ -377,7 +383,7 @@ export default function FocusTimer() {
         id: Date.now(),
         type: completedMode,
         duration: duration,
-        timestamp: new Date().toISOString()
+        timestamp: completionTimestamp
       }
       newHistory = [historyEntry, ...history]
       setHistory(newHistory)
