@@ -78,7 +78,8 @@ export default function FocusTimer() {
     
     const savedTimeLeft = localStorage.getItem('study_timer_time_left')
     if (savedTimeLeft) {
-      return parseInt(savedTimeLeft, 10)
+      const parsed = parseInt(savedTimeLeft, 10)
+      if (parsed > 0) return parsed
     }
     
     return durationMins * 60
@@ -135,16 +136,18 @@ export default function FocusTimer() {
         
         const focusMins = workSessions
           .filter(item => {
-            if (!item.timestamp) return false
-            const d = new Date(item.timestamp)
+            const itemTime = item.timestamp || item.id
+            if (!itemTime) return false
+            const d = new Date(itemTime)
             return d.toDateString() === targetDateStr && d.getHours() === hour
           })
           .reduce((sum, item) => sum + (item.duration || 0), 0)
 
         const breakMins = breakSessions
           .filter(item => {
-            if (!item.timestamp) return false
-            const d = new Date(item.timestamp)
+            const itemTime = item.timestamp || item.id
+            if (!itemTime) return false
+            const d = new Date(itemTime)
             return d.toDateString() === targetDateStr && d.getHours() === hour
           })
           .reduce((sum, item) => sum + (item.duration || 0), 0)
@@ -163,11 +166,17 @@ export default function FocusTimer() {
         const dateString = d.toDateString()
         
         const focusMins = workSessions
-          .filter(item => item.timestamp && new Date(item.timestamp).toDateString() === dateString)
+          .filter(item => {
+            const itemTime = item.timestamp || item.id
+            return itemTime && new Date(itemTime).toDateString() === dateString
+          })
           .reduce((sum, item) => sum + (item.duration || 0), 0)
 
         const breakMins = breakSessions
-          .filter(item => item.timestamp && new Date(item.timestamp).toDateString() === dateString)
+          .filter(item => {
+            const itemTime = item.timestamp || item.id
+            return itemTime && new Date(itemTime).toDateString() === dateString
+          })
           .reduce((sum, item) => sum + (item.duration || 0), 0)
           
         weeklyData.push({ label: dayName, focus: focusMins, break: breakMins, dateString })
@@ -191,16 +200,18 @@ export default function FocusTimer() {
         
         const focusMins = workSessions
           .filter(item => {
-            if (!item.timestamp) return false
-            const itemDate = new Date(item.timestamp)
+            const itemTime = item.timestamp || item.id
+            if (!itemTime) return false
+            const itemDate = new Date(itemTime)
             return itemDate >= start && itemDate <= end
           })
           .reduce((sum, item) => sum + (item.duration || 0), 0)
 
         const breakMins = breakSessions
           .filter(item => {
-            if (!item.timestamp) return false
-            const itemDate = new Date(item.timestamp)
+            const itemTime = item.timestamp || item.id
+            if (!itemTime) return false
+            const itemDate = new Date(itemTime)
             return itemDate >= start && itemDate <= end
           })
           .reduce((sum, item) => sum + (item.duration || 0), 0)
@@ -222,16 +233,18 @@ export default function FocusTimer() {
         
         const focusMins = workSessions
           .filter(item => {
-            if (!item.timestamp) return false
-            const itemDate = new Date(item.timestamp)
+            const itemTime = item.timestamp || item.id
+            if (!itemTime) return false
+            const itemDate = new Date(itemTime)
             return itemDate.getMonth() === month && itemDate.getFullYear() === year
           })
           .reduce((sum, item) => sum + (item.duration || 0), 0)
 
         const breakMins = breakSessions
           .filter(item => {
-            if (!item.timestamp) return false
-            const itemDate = new Date(item.timestamp)
+            const itemTime = item.timestamp || item.id
+            if (!itemTime) return false
+            const itemDate = new Date(itemTime)
             return itemDate.getMonth() === month && itemDate.getFullYear() === year
           })
           .reduce((sum, item) => sum + (item.duration || 0), 0)
@@ -246,7 +259,10 @@ export default function FocusTimer() {
 
   const todayHistory = useMemo(() => {
     const todayStr = new Date().toDateString()
-    return history.filter(item => item.timestamp && new Date(item.timestamp).toDateString() === todayStr)
+    return history.filter(item => {
+      const itemTime = item.timestamp || item.id
+      return itemTime && new Date(itemTime).toDateString() === todayStr
+    })
   }, [history])
 
   // Save states to LocalStorage
@@ -302,8 +318,24 @@ export default function FocusTimer() {
             const remaining = Math.max(0, Math.ceil((state.studyTimerEndTime - Date.now()) / 1000))
             setTimeLeft(remaining)
           } else if (state.studyTimerTimeLeft !== undefined) {
-            setTimeLeft(state.studyTimerTimeLeft)
-            localStorage.setItem('study_timer_time_left', state.studyTimerTimeLeft.toString())
+            const backendTimeLeft = state.studyTimerTimeLeft
+            if (backendTimeLeft > 0) {
+              setTimeLeft(backendTimeLeft)
+              localStorage.setItem('study_timer_time_left', backendTimeLeft.toString())
+            } else {
+              const currentMode = state.studyTimerMode || mode
+              let durationMins = 25
+              if (currentMode === 'work') {
+                durationMins = state.studyWorkDuration !== undefined ? state.studyWorkDuration : workDuration
+              } else if (currentMode === 'short') {
+                durationMins = state.studyShortDuration !== undefined ? state.studyShortDuration : shortDuration
+              } else {
+                durationMins = state.studyLongDuration !== undefined ? state.studyLongDuration : longDuration
+              }
+              const defaultSeconds = durationMins * 60
+              setTimeLeft(defaultSeconds)
+              localStorage.setItem('study_timer_time_left', defaultSeconds.toString())
+            }
           }
           if (state.studySessionsCompleted !== undefined) {
             setSessionsCompleted(state.studySessionsCompleted)
