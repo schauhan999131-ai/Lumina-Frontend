@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import {
   AreaChart,
   Area,
@@ -99,6 +99,15 @@ export default function FocusTimer() {
     const saved = localStorage.getItem('study_focus_history')
     return saved ? JSON.parse(saved) : []
   })
+
+  const [acceptedDays, setAcceptedDays] = useState(() => {
+    const saved = localStorage.getItem('study_accepted_days')
+    return saved ? JSON.parse(saved) : []
+  })
+
+  useEffect(() => {
+    localStorage.setItem('study_accepted_days', JSON.stringify(acceptedDays))
+  }, [acceptedDays])
 
   const [chartRange, setChartRange] = useState('daily') // 'daily' | 'weekly' | 'monthly' | 'yearly'
   const [selectedDate, setSelectedDate] = useState(() => new Date())
@@ -293,6 +302,20 @@ export default function FocusTimer() {
       try {
         const state = await getTimerState()
         if (state) {
+          // Guard: If the user has started a local active timer during the fetch, do not overwrite it
+          const localActive = localStorage.getItem('study_timer_active') === 'true'
+          if (localActive && !state.studyTimerActive) {
+            const endTimeStr = localStorage.getItem('study_timer_endtime')
+            const timeLeftStr = localStorage.getItem('study_timer_time_left')
+            syncTimerToBackend({
+              studyTimerActive: true,
+              studyTimerEndTime: endTimeStr ? parseInt(endTimeStr, 10) : 0,
+              studyTimerTimeLeft: timeLeftStr ? parseInt(timeLeftStr, 10) : 0,
+              studyTimerMode: localStorage.getItem('study_timer_mode') || 'work'
+            })
+            return
+          }
+
           if (state.studyWorkDuration !== undefined) {
             setWorkDuration(state.studyWorkDuration)
             localStorage.setItem('study_work_duration', state.studyWorkDuration.toString())
@@ -352,6 +375,15 @@ export default function FocusTimer() {
               localStorage.setItem('study_focus_history', state.studyFocusHistory)
             } catch (e) {
               console.error('Error parsing focus history:', e)
+            }
+          }
+          if (state.studyAcceptedDays !== undefined && state.studyAcceptedDays !== null) {
+            try {
+              const parsedAccepted = JSON.parse(state.studyAcceptedDays)
+              setAcceptedDays(parsedAccepted)
+              localStorage.setItem('study_accepted_days', state.studyAcceptedDays)
+            } catch (e) {
+              console.error('Error parsing accepted days:', e)
             }
           }
         }
@@ -441,6 +473,11 @@ export default function FocusTimer() {
     })
   }
 
+  const handleCompletionRef = useRef(handleCompletion)
+  useEffect(() => {
+    handleCompletionRef.current = handleCompletion
+  })
+
   // Effect to run the timer when active
   useEffect(() => {
     if (!isActive) return
@@ -455,7 +492,7 @@ export default function FocusTimer() {
       const remaining = Math.max(0, Math.ceil((endTime - now) / 1000))
 
       if (remaining <= 0) {
-        handleCompletion(mode)
+        handleCompletionRef.current(mode)
         return true
       } else {
         setTimeLeft(remaining)
@@ -679,6 +716,78 @@ export default function FocusTimer() {
     return ` — ${selectedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
   }, [chartRange, selectedDate])
 
+  // Calculate today's focus minutes from history
+  const todayFocusMinutes = useMemo(() => {
+    const todayStr = new Date().toDateString()
+    return history
+      .filter(item => {
+        const itemTime = item.timestamp || item.id
+        return itemTime && new Date(itemTime).toDateString() === todayStr && item.type === 'work'
+      })
+      .reduce((sum, item) => sum + (item.duration || 0), 0)
+  }, [history])
+
+  // Calculate streaks
+  const streakInfo = useMemo(() => {
+    if (acceptedDays.length === 0) return { currentStreak: 0, total: 0 }
+    
+    // Sort unique accepted days in descending chronological order
+    const uniqueDates = Array.from(new Set(acceptedDays))
+    const sortedDates = uniqueDates
+      .map(d => new Date(d))
+      .sort((a, b) => b.getTime() - a.getTime())
+    
+    let currentStreak = 0
+    let checkDate = new Date()
+    checkDate.setHours(0, 0, 0, 0)
+    
+    const hasDateStr = (dateObj) => {
+      const dateStr = dateObj.toDateString()
+      return uniqueDates.includes(dateStr)
+    }
+    
+    if (hasDateStr(checkDate)) {
+      currentStreak = 1
+      checkDate.setDate(checkDate.getDate() - 1)
+      while (hasDateStr(checkDate)) {
+        currentStreak++
+        checkDate.setDate(checkDate.getDate() - 1)
+      }
+    } else {
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      yesterday.setHours(0, 0, 0, 0)
+      if (hasDateStr(yesterday)) {
+        currentStreak = 1
+        yesterday.setDate(yesterday.getDate() - 1)
+        while (hasDateStr(yesterday)) {
+          currentStreak++
+          yesterday.setDate(yesterday.getDate() - 1)
+        }
+      }
+    }
+    
+    return {
+      currentStreak,
+      total: uniqueDates.length
+    }
+  }, [acceptedDays])
+
+  // Accept and lock today's focus session
+  const acceptToday = () => {
+    const todayStr = new Date().toDateString()
+    if (acceptedDays.includes(todayStr)) return
+    
+    const newAccepted = [...acceptedDays, todayStr]
+    setAcceptedDays(newAccepted)
+    
+    triggerNotification('🏆 Today has been accepted and logged successfully!')
+    
+    syncTimerToBackend({
+      studyAcceptedDays: JSON.stringify(newAccepted)
+    })
+  }
+
   // Visual circular progress calculations
   const totalSeconds = mode === 'work' ? workDuration * 60 : mode === 'short' ? shortDuration * 60 : longDuration * 60
   const progressPercent = ((totalSeconds - timeLeft) / totalSeconds) * 100
@@ -792,6 +901,111 @@ export default function FocusTimer() {
               </div>
               <span className="block text-[9px] text-slate-500">Accumulated focus minutes</span>
             </div>
+          </section>
+
+          {/* 6-Hour Target & Day Acceptance Card */}
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg shadow-slate-950/20 space-y-4 relative overflow-hidden">
+            {/* Background glowing sphere */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-2xl pointer-events-none"></div>
+
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+                  <span>🏆</span>
+                  <span>Daily Focus Target</span>
+                </h3>
+                <p className="text-[10px] text-slate-500 mt-0.5">Maintain 6+ hours of focus daily, even on holidays</p>
+              </div>
+              {streakInfo.currentStreak > 0 && (
+                <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full text-[10px] font-black text-amber-400 animate-pulse">
+                  <span>🔥</span>
+                  <span>{streakInfo.currentStreak} Day Streak</span>
+                </div>
+              )}
+            </div>
+
+            {/* Progress Bar Container */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-slate-400">Today's Progress</span>
+                <span className={todayFocusMinutes >= 360 ? "text-emerald-400 font-mono" : "text-purple-400 font-mono"}>
+                  {todayFocusMinutes}m / 360m ({Math.min(100, Math.round((todayFocusMinutes / 360) * 100))}%)
+                </span>
+              </div>
+              <div className="h-2 w-full bg-slate-900 border border-slate-800 rounded-full overflow-hidden relative">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ease-out ${
+                    todayFocusMinutes >= 360 
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-600 shadow-[0_0_12px_rgba(16,185,129,0.3)]' 
+                      : 'bg-gradient-to-r from-purple-500 to-pink-500 shadow-[0_0_12px_rgba(168,85,247,0.3)]'
+                  }`}
+                  style={{ width: `${Math.min(100, (todayFocusMinutes / 360) * 100)}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Accept / Lock Day Button */}
+            <div className="pt-2">
+              {todayFocusMinutes < 360 ? (
+                <div className="w-full rounded-2xl bg-slate-900/60 border border-slate-800 p-3.5 text-center space-y-1 select-none">
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full rounded-xl bg-slate-800 border border-slate-700 text-slate-500 py-2.5 text-xs font-bold flex items-center justify-center gap-2 cursor-not-allowed"
+                  >
+                    <span>🔒</span> Lock Day (Requires 6h focus)
+                  </button>
+                  <p className="text-[9px] text-slate-500 font-medium">
+                    Focus for {360 - todayFocusMinutes} more minutes today to unlock and accept this day.
+                  </p>
+                </div>
+              ) : acceptedDays.includes(new Date().toDateString()) ? (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 py-3 text-xs font-bold flex items-center justify-center gap-2 select-none shadow-lg shadow-emerald-500/5"
+                >
+                  <span>✓</span> Today Accepted & Logged
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={acceptToday}
+                  className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 py-3 text-xs font-black flex items-center justify-center gap-2 transition duration-200 hover:scale-[1.01] active:scale-95 shadow-lg shadow-emerald-500/20"
+                >
+                  <span>⚡</span> Accept & Lock Today
+                </button>
+              )}
+            </div>
+
+            {/* Accepted Days History List */}
+            {acceptedDays.length > 0 && (
+              <div className="border-t border-slate-800 pt-3 space-y-2">
+                <span className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Accepted Days Log</span>
+                <div className="flex flex-wrap gap-1.5 max-h-[70px] overflow-y-auto pr-1">
+                  {/* Show recent accepted days sorted descending */}
+                  {[...acceptedDays]
+                    .map(d => new Date(d))
+                    .sort((a, b) => b.getTime() - a.getTime())
+                    .slice(0, 10)
+                    .map((dateObj, idx) => {
+                      const label = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                      return (
+                        <div key={idx} className="flex items-center gap-1 bg-emerald-950/40 border border-emerald-900/30 text-[9px] font-bold text-emerald-400 px-2 py-0.5 rounded-lg">
+                          <span>✓</span>
+                          <span>{label}</span>
+                        </div>
+                      )
+                    })
+                  }
+                  {acceptedDays.length > 10 && (
+                    <div className="text-[9px] text-slate-500 font-bold self-center pl-1">
+                      + {acceptedDays.length - 10} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </section>
         </div>
 
