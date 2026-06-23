@@ -344,7 +344,14 @@ export default function FocusTimer() {
             const backendTimeLeft = state.studyTimerTimeLeft
             if (backendTimeLeft > 0) {
               setTimeLeft(backendTimeLeft)
-              localStorage.setItem('study_timer_time_left', backendTimeLeft.toString())
+              if (state.studyTimerActive) {
+                // Active timer with no valid endTime — compute one so the timer effect can run
+                const computedEndTime = Date.now() + backendTimeLeft * 1000
+                localStorage.setItem('study_timer_endtime', computedEndTime.toString())
+                localStorage.removeItem('study_timer_time_left')
+              } else {
+                localStorage.setItem('study_timer_time_left', backendTimeLeft.toString())
+              }
             } else {
               const currentMode = state.studyTimerMode || mode
               let durationMins = 25

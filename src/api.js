@@ -185,5 +185,30 @@ export const deleteNote = (noteId) =>
     method: 'DELETE',
   })
 
+// Vocabulary API
+export const fetchVocab = () =>
+  request('/api/vocab')
 
+export const createVocab = (vocabData) =>
+  request('/api/vocab', {
+    method: 'POST',
+    body: JSON.stringify(vocabData),
+  })
+
+export const updateVocab = (vocabId, updateData) =>
+  request(`/api/vocab/${encodeURIComponent(vocabId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(updateData),
+  })
+
+export const deleteVocab = (vocabId) =>
+  request(`/api/vocab/${encodeURIComponent(vocabId)}`, {
+    method: 'DELETE',
+  })
+
+export const resetAllVocabStatus = (status) =>
+  request('/api/vocab/batch/status', {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  })
 

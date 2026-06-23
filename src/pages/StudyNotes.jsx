@@ -442,16 +442,60 @@ export default function StudyNotes() {
     loadNotesAndMigrate()
   }, [])
 
+  // Load vocabulary from database on mount, migrating localStorage if needed
+  useEffect(() => {
+    const loadVocab = async () => {
+      setVocabLoading(true)
+      try {
+        const res = await api.fetchVocab()
+        let currentVocab = res.data || []
+
+        // Migrate localStorage vocab to database
+        const localSaved = localStorage.getItem('lumina_vocab')
+        if (localSaved) {
+          try {
+            const localVocab = JSON.parse(localSaved)
+            if (localVocab && localVocab.length > 0) {
+              const existingWords = new Set(currentVocab.map(v => v.word.toLowerCase()))
+              const toMigrate = localVocab.filter(v => !existingWords.has(v.word.toLowerCase()))
+              if (toMigrate.length > 0) {
+                const migRes = await api.createVocab(toMigrate)
+                const migrated = migRes.data || []
+                currentVocab = [...migrated, ...currentVocab]
+              }
+            }
+          } catch (e) {
+            console.error('Error migrating local vocab:', e)
+          }
+          localStorage.removeItem('lumina_vocab')
+        }
+
+        // Seed with initial pack if database is empty
+        if (currentVocab.length === 0) {
+          const seedRes = await api.createVocab(initialVocabulary)
+          currentVocab = seedRes.data || []
+        }
+
+        setVocabList(currentVocab)
+      } catch (err) {
+        console.error('Error loading vocab:', err)
+        // Fallback to initialVocabulary so UI is usable offline
+        setVocabList(initialVocabulary)
+      } finally {
+        setVocabLoading(false)
+      }
+    }
+    loadVocab()
+  }, [])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [newTodoText, setNewTodoText] = useState('')
   const [selectedSubject, setSelectedSubject] = useState('All')
   const [message, setMessage] = useState(null)
 
   // --- VOCAB & PHRASE HUB STATE ---
-  const [vocabList, setVocabList] = useState(() => {
-    const saved = localStorage.getItem('lumina_vocab')
-    return saved ? JSON.parse(saved) : initialVocabulary
-  })
+  const [vocabList, setVocabList] = useState([])
+  const [vocabLoading, setVocabLoading] = useState(true)
   const [vocabWord, setVocabWord] = useState('')
   const [vocabCategory, setVocabCategory] = useState('Coding Term')
   const [vocabPartOfSpeech, setVocabPartOfSpeech] = useState('Noun')
@@ -648,12 +692,9 @@ export default function StudyNotes() {
   })
 
   // --- VOCAB & PHRASE HUB FUNCTIONS ---
-  const handleSaveVocabList = (updated) => {
-    setVocabList(updated)
-    localStorage.setItem('lumina_vocab', JSON.stringify(updated))
-  }
+  const vocabId = (v) => v._id || v.id
 
-  const handleCreateVocab = (e) => {
+  const handleCreateVocab = async (e) => {
     e.preventDefault()
     if (!vocabWord.trim() || !vocabDefinition.trim()) {
       setVocabMessage('Please enter the word/phrase and its definition.')
@@ -661,7 +702,6 @@ export default function StudyNotes() {
     }
 
     const newItem = {
-      id: Date.now(),
       word: vocabWord.trim(),
       category: vocabCategory,
       partOfSpeech: vocabPartOfSpeech,
@@ -674,45 +714,52 @@ export default function StudyNotes() {
       status: 'learning'
     }
 
-    const updated = [newItem, ...vocabList]
-    handleSaveVocabList(updated)
-
-    // Reset Form
-    setVocabWord('')
-    setVocabDefinition('')
-    setVocabExample('')
-    setVocabCodeContext('')
-    setVocabMnemonic('')
-    setVocabImage(null)
-    setVocabMessage('Word added to vault!')
+    try {
+      const res = await api.createVocab(newItem)
+      setVocabList([res.data, ...vocabList])
+      setVocabWord('')
+      setVocabDefinition('')
+      setVocabExample('')
+      setVocabCodeContext('')
+      setVocabMnemonic('')
+      setVocabImage(null)
+      setVocabMessage('Word added to vault!')
+    } catch (err) {
+      console.error('Error creating vocab:', err)
+      setVocabMessage('Failed to save word.')
+    }
     setTimeout(() => setVocabMessage(null), 3000)
   }
 
-  const handleDeleteVocab = (id) => {
-    const updated = vocabList.filter(v => v.id !== id)
-    handleSaveVocabList(updated)
-    setVocabMessage('Word deleted.')
-    setTimeout(() => setVocabMessage(null), 3000)
-
-    // Adjust flashcard index if out of bounds
+  const handleDeleteVocab = async (id) => {
+    setVocabList(prev => prev.filter(v => vocabId(v) !== id))
     if (activeCardIndex >= learningWords.length - 1 && activeCardIndex > 0) {
       setActiveCardIndex(prev => Math.max(0, prev - 1))
       setIsCardFlipped(false)
     }
+    try {
+      await api.deleteVocab(id)
+      setVocabMessage('Word deleted.')
+    } catch (err) {
+      console.error('Error deleting vocab:', err)
+      setVocabMessage('Failed to delete word.')
+    }
+    setTimeout(() => setVocabMessage(null), 3000)
   }
 
-  const toggleVocabStatus = (id) => {
-    const updated = vocabList.map(v => {
-      if (v.id === id) {
-        return { ...v, status: v.status === 'learning' ? 'mastered' : 'learning' }
-      }
-      return v
-    })
-    handleSaveVocabList(updated)
+  const toggleVocabStatus = async (id) => {
+    const word = vocabList.find(v => vocabId(v) === id)
+    if (!word) return
+    const newStatus = word.status === 'learning' ? 'mastered' : 'learning'
+    setVocabList(prev => prev.map(v => vocabId(v) === id ? { ...v, status: newStatus } : v))
+    try {
+      await api.updateVocab(id, { status: newStatus })
+    } catch (err) {
+      console.error('Error updating vocab status:', err)
+    }
   }
 
-  const importDeveloperPack = () => {
-    // Merge pack without duplicates
+  const importDeveloperPack = async () => {
     const existingWords = new Set(vocabList.map(v => v.word.toLowerCase()))
     const newItems = initialVocabulary.filter(item => !existingWords.has(item.word.toLowerCase()))
 
@@ -722,19 +769,29 @@ export default function StudyNotes() {
       return
     }
 
-    // Add unique ones
-    const updated = [...vocabList, ...newItems.map(item => ({ ...item, id: Date.now() + Math.random() }))]
-    handleSaveVocabList(updated)
-    setVocabMessage(`Successfully imported ${newItems.length} developer vocabulary words!`)
+    try {
+      const res = await api.createVocab(newItems)
+      const created = res.data || []
+      setVocabList(prev => [...created, ...prev])
+      setVocabMessage(`Successfully imported ${newItems.length} developer vocabulary words!`)
+    } catch (err) {
+      console.error('Error importing developer pack:', err)
+      setVocabMessage('Failed to import developer pack.')
+    }
     setTimeout(() => setVocabMessage(null), 3000)
   }
 
-  const resetAllMastered = () => {
-    const updated = vocabList.map(v => ({ ...v, status: 'learning' }))
-    handleSaveVocabList(updated)
+  const resetAllMastered = async () => {
+    setVocabList(prev => prev.map(v => ({ ...v, status: 'learning' })))
     setActiveCardIndex(0)
     setIsCardFlipped(false)
-    setVocabMessage('Reset all words to Learning mode.')
+    try {
+      await api.resetAllVocabStatus('learning')
+      setVocabMessage('Reset all words to Learning mode.')
+    } catch (err) {
+      console.error('Error resetting vocab:', err)
+      setVocabMessage('Reset locally, but failed to sync to database.')
+    }
     setTimeout(() => setVocabMessage(null), 3000)
   }
 
@@ -748,7 +805,7 @@ export default function StudyNotes() {
 
     const currentWord = learningWords[activeCardIndex]
     if (mastered) {
-      toggleVocabStatus(currentWord.id)
+      toggleVocabStatus(vocabId(currentWord))
     }
 
     setIsCardFlipped(false)
@@ -775,20 +832,20 @@ export default function StudyNotes() {
 
   // Edit Mode functions
   const startEditing = (word) => {
-    setEditingWordId(word.id)
+    setEditingWordId(vocabId(word))
     setEditFields({ ...word })
   }
 
-  const saveEditing = () => {
-    const updated = vocabList.map(v => {
-      if (v.id === editingWordId) {
-        return { ...editFields }
-      }
-      return v
-    })
-    handleSaveVocabList(updated)
+  const saveEditing = async () => {
+    setVocabList(prev => prev.map(v => vocabId(v) === editingWordId ? { ...v, ...editFields } : v))
     setEditingWordId(null)
-    setVocabMessage('Word details updated.')
+    try {
+      await api.updateVocab(editingWordId, editFields)
+      setVocabMessage('Word details updated.')
+    } catch (err) {
+      console.error('Error saving vocab edit:', err)
+      setVocabMessage('Failed to save changes.')
+    }
     setTimeout(() => setVocabMessage(null), 3000)
   }
 
@@ -1792,26 +1849,32 @@ export default function StudyNotes() {
 
             {/* List dictionary */}
             <div className="space-y-4 max-h-[640px] overflow-y-auto pr-1">
-              {filteredVocab.length === 0 ? (
+              {vocabLoading ? (
+                <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-8 text-center text-slate-500 flex flex-col items-center gap-3">
+                  <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs">Syncing vocabulary with database...</span>
+                </div>
+              ) : filteredVocab.length === 0 ? (
                 <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-8 text-center text-slate-500">
                   No vocabulary found matching your criteria.
                 </div>
               ) : (
                 filteredVocab.map((vocab) => {
-                  const isExpanded = expandedCardIds.includes(vocab.id)
-                  const isEditing = editingWordId === vocab.id
+                  const vid = vocabId(vocab)
+                  const isExpanded = expandedCardIds.includes(vid)
+                  const isEditing = editingWordId === vid
 
                   return (
-                    <div 
-                      key={vocab.id} 
+                    <div
+                      key={vid}
                       className={`rounded-3xl border bg-slate-950/80 p-5 shadow-md transition-all duration-200 animate-fade-in relative group ${
                         isExpanded ? 'border-purple-500/20 shadow-purple-950/10' : 'border-slate-800 hover:border-purple-500/15'
                       }`}
                     >
                       {/* CARD HEADER (Always Visible) */}
-                      <div 
+                      <div
                         className="flex items-start justify-between cursor-pointer"
-                        onClick={() => toggleExpandCard(vocab.id)}
+                        onClick={() => toggleExpandCard(vid)}
                       >
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -1844,7 +1907,7 @@ export default function StudyNotes() {
                         <div className="flex items-center gap-1.5 onClickStopProp" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => toggleVocabStatus(vocab.id)}
+                            onClick={() => toggleVocabStatus(vid)}
                             className={`p-1.5 rounded-xl border text-xs transition ${
                               vocab.status === 'mastered'
                                 ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-250 hover:bg-emerald-600/30'
@@ -1857,7 +1920,7 @@ export default function StudyNotes() {
                           
                           <button
                             type="button"
-                            onClick={() => handleDeleteVocab(vocab.id)}
+                            onClick={() => handleDeleteVocab(vid)}
                             className="p-1.5 rounded-xl border border-rose-500/20 bg-rose-550/10 text-rose-300 hover:bg-rose-550/20 transition opacity-0 group-hover:opacity-100"
                             title="Delete word"
                           >
