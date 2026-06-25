@@ -393,6 +393,9 @@ export default function FocusTimer() {
               console.error('Error parsing accepted days:', e)
             }
           }
+          if (state.studyTimerStartDuration !== undefined && state.studyTimerStartDuration > 0) {
+            localStorage.setItem('study_timer_start_duration', state.studyTimerStartDuration.toString())
+          }
         }
       } catch (err) {
         console.warn('Could not fetch timer state from backend (running offline/fallback):', err.message)
@@ -412,6 +415,8 @@ export default function FocusTimer() {
     localStorage.setItem('study_timer_active', 'false')
     localStorage.removeItem('study_timer_endtime')
     localStorage.removeItem('study_timer_time_left')
+    const startDuration = parseInt(localStorage.getItem('study_timer_start_duration') || '0', 10)
+    localStorage.removeItem('study_timer_start_duration')
 
     let nextMode = 'work'
     let nextTimeLeft = 25 * 60
@@ -421,7 +426,7 @@ export default function FocusTimer() {
     let newHistory = history
 
     if (completedMode === 'work') {
-      duration = parseInt(localStorage.getItem('study_work_duration') || '25', 10)
+      duration = startDuration > 0 ? startDuration : parseInt(localStorage.getItem('study_work_duration') || '25', 10)
       newSessions = sessionsCompleted + 1
       newMins = focusMinutes + duration
 
@@ -446,9 +451,11 @@ export default function FocusTimer() {
       nextTimeLeft = shortMins * 60
       setTimeLeft(nextTimeLeft)
     } else {
-      duration = completedMode === 'short' 
-        ? parseInt(localStorage.getItem('study_short_duration') || '5', 10)
-        : parseInt(localStorage.getItem('study_long_duration') || '15', 10)
+      duration = startDuration > 0
+        ? startDuration
+        : completedMode === 'short'
+          ? parseInt(localStorage.getItem('study_short_duration') || '5', 10)
+          : parseInt(localStorage.getItem('study_long_duration') || '15', 10)
       
       const historyEntry = {
         id: Date.now(),
@@ -474,6 +481,7 @@ export default function FocusTimer() {
       studyTimerEndTime: 0,
       studyTimerTimeLeft: nextTimeLeft,
       studyTimerMode: nextMode,
+      studyTimerStartDuration: 0,
       studySessionsCompleted: newSessions,
       studyFocusMinutes: newMins,
       studyFocusHistory: JSON.stringify(newHistory)
@@ -525,7 +533,8 @@ export default function FocusTimer() {
     localStorage.setItem('study_timer_active', 'false')
     localStorage.removeItem('study_timer_endtime')
     localStorage.removeItem('study_timer_time_left')
-    
+    localStorage.removeItem('study_timer_start_duration')
+
     let durationMins = 25
     if (newMode === 'work') durationMins = workDuration
     else if (newMode === 'short') durationMins = shortDuration
@@ -548,11 +557,17 @@ export default function FocusTimer() {
 
     let endTime = 0
     let timeLeftVal = timeLeft
+    let plannedDur = 0
 
     if (newActive) {
+      const isResuming = !!localStorage.getItem('study_timer_time_left')
       endTime = Date.now() + timeLeft * 1000
       localStorage.setItem('study_timer_endtime', endTime.toString())
       localStorage.removeItem('study_timer_time_left')
+      if (!isResuming) {
+        plannedDur = mode === 'work' ? workDuration : mode === 'short' ? shortDuration : longDuration
+        localStorage.setItem('study_timer_start_duration', plannedDur.toString())
+      }
     } else {
       localStorage.setItem('study_timer_time_left', timeLeft.toString())
       localStorage.removeItem('study_timer_endtime')
@@ -561,7 +576,8 @@ export default function FocusTimer() {
     syncTimerToBackend({
       studyTimerActive: newActive,
       studyTimerEndTime: endTime,
-      studyTimerTimeLeft: timeLeftVal
+      studyTimerTimeLeft: timeLeftVal,
+      ...(plannedDur > 0 ? { studyTimerStartDuration: plannedDur } : {})
     })
   }
 
