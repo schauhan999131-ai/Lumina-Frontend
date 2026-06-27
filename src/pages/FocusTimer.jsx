@@ -302,18 +302,20 @@ export default function FocusTimer() {
       try {
         const state = await getTimerState()
         if (state) {
-          // Guard: If the user has started a local active timer during the fetch, do not overwrite it
+          // A locally-running timer is the source of truth for the live session.
+          // If one is active we must NOT adopt the backend's mode/active/endtime below —
+          // a stale backend mode would relabel an in-progress focus session as a break.
           const localActive = localStorage.getItem('study_timer_active') === 'true'
-          if (localActive && !state.studyTimerActive) {
+          if (localActive) {
             const endTimeStr = localStorage.getItem('study_timer_endtime')
             const timeLeftStr = localStorage.getItem('study_timer_time_left')
             syncTimerToBackend({
               studyTimerActive: true,
               studyTimerEndTime: endTimeStr ? parseInt(endTimeStr, 10) : 0,
               studyTimerTimeLeft: timeLeftStr ? parseInt(timeLeftStr, 10) : 0,
-              studyTimerMode: localStorage.getItem('study_timer_mode') || 'work'
+              studyTimerMode: localStorage.getItem('study_timer_mode') || 'work',
+              studyTimerStartDuration: parseInt(localStorage.getItem('study_timer_start_duration') || '0', 10)
             })
-            return
           }
 
           if (state.studyWorkDuration !== undefined) {
@@ -328,43 +330,50 @@ export default function FocusTimer() {
             setLongDuration(state.studyLongDuration)
             localStorage.setItem('study_long_duration', state.studyLongDuration.toString())
           }
-          if (state.studyTimerMode !== undefined) {
-            setMode(state.studyTimerMode)
-            localStorage.setItem('study_timer_mode', state.studyTimerMode)
-          }
-          if (state.studyTimerActive !== undefined) {
-            setIsActive(state.studyTimerActive)
-            localStorage.setItem('study_timer_active', state.studyTimerActive.toString())
-          }
-          if (state.studyTimerEndTime !== undefined && state.studyTimerEndTime > 0) {
-            localStorage.setItem('study_timer_endtime', state.studyTimerEndTime.toString())
-            const remaining = Math.max(0, Math.ceil((state.studyTimerEndTime - Date.now()) / 1000))
-            setTimeLeft(remaining)
-          } else if (state.studyTimerTimeLeft !== undefined) {
-            const backendTimeLeft = state.studyTimerTimeLeft
-            if (backendTimeLeft > 0) {
-              setTimeLeft(backendTimeLeft)
-              if (state.studyTimerActive) {
-                // Active timer with no valid endTime — compute one so the timer effect can run
-                const computedEndTime = Date.now() + backendTimeLeft * 1000
-                localStorage.setItem('study_timer_endtime', computedEndTime.toString())
-                localStorage.removeItem('study_timer_time_left')
+          // Live-timer fields are only adopted from the backend when there is NO active
+          // local session (otherwise the running session — its mode included — wins).
+          if (!localActive) {
+            if (state.studyTimerMode !== undefined) {
+              setMode(state.studyTimerMode)
+              localStorage.setItem('study_timer_mode', state.studyTimerMode)
+            }
+            if (state.studyTimerActive !== undefined) {
+              setIsActive(state.studyTimerActive)
+              localStorage.setItem('study_timer_active', state.studyTimerActive.toString())
+            }
+            if (state.studyTimerEndTime !== undefined && state.studyTimerEndTime > 0) {
+              localStorage.setItem('study_timer_endtime', state.studyTimerEndTime.toString())
+              const remaining = Math.max(0, Math.ceil((state.studyTimerEndTime - Date.now()) / 1000))
+              setTimeLeft(remaining)
+            } else if (state.studyTimerTimeLeft !== undefined) {
+              const backendTimeLeft = state.studyTimerTimeLeft
+              if (backendTimeLeft > 0) {
+                setTimeLeft(backendTimeLeft)
+                if (state.studyTimerActive) {
+                  // Active timer with no valid endTime — compute one so the timer effect can run
+                  const computedEndTime = Date.now() + backendTimeLeft * 1000
+                  localStorage.setItem('study_timer_endtime', computedEndTime.toString())
+                  localStorage.removeItem('study_timer_time_left')
+                } else {
+                  localStorage.setItem('study_timer_time_left', backendTimeLeft.toString())
+                }
               } else {
-                localStorage.setItem('study_timer_time_left', backendTimeLeft.toString())
+                const currentMode = state.studyTimerMode || mode
+                let durationMins = 25
+                if (currentMode === 'work') {
+                  durationMins = state.studyWorkDuration !== undefined ? state.studyWorkDuration : workDuration
+                } else if (currentMode === 'short') {
+                  durationMins = state.studyShortDuration !== undefined ? state.studyShortDuration : shortDuration
+                } else {
+                  durationMins = state.studyLongDuration !== undefined ? state.studyLongDuration : longDuration
+                }
+                const defaultSeconds = durationMins * 60
+                setTimeLeft(defaultSeconds)
+                localStorage.setItem('study_timer_time_left', defaultSeconds.toString())
               }
-            } else {
-              const currentMode = state.studyTimerMode || mode
-              let durationMins = 25
-              if (currentMode === 'work') {
-                durationMins = state.studyWorkDuration !== undefined ? state.studyWorkDuration : workDuration
-              } else if (currentMode === 'short') {
-                durationMins = state.studyShortDuration !== undefined ? state.studyShortDuration : shortDuration
-              } else {
-                durationMins = state.studyLongDuration !== undefined ? state.studyLongDuration : longDuration
-              }
-              const defaultSeconds = durationMins * 60
-              setTimeLeft(defaultSeconds)
-              localStorage.setItem('study_timer_time_left', defaultSeconds.toString())
+            }
+            if (state.studyTimerStartDuration !== undefined && state.studyTimerStartDuration > 0) {
+              localStorage.setItem('study_timer_start_duration', state.studyTimerStartDuration.toString())
             }
           }
           if (state.studySessionsCompleted !== undefined) {
@@ -393,9 +402,6 @@ export default function FocusTimer() {
               console.error('Error parsing accepted days:', e)
             }
           }
-          if (state.studyTimerStartDuration !== undefined && state.studyTimerStartDuration > 0) {
-            localStorage.setItem('study_timer_start_duration', state.studyTimerStartDuration.toString())
-          }
         }
       } catch (err) {
         console.warn('Could not fetch timer state from backend (running offline/fallback):', err.message)
@@ -404,17 +410,23 @@ export default function FocusTimer() {
     fetchBackendTimerState()
   }, [])
 
-  const handleCompletion = (completedMode) => {
+  const handleCompletion = (fallbackMode) => {
+    // The mode the session was actually STARTED in is the single source of truth for
+    // logging. The live React `mode` can be changed mid-session by a background backend
+    // sync, which previously caused focus sessions to be mislabeled as breaks.
+    const completedMode = localStorage.getItem('study_timer_run_mode') || fallbackMode
+
     // Get the scheduled completion time before clearing localStorage
     const endTimeStr = localStorage.getItem('study_timer_endtime')
-    const completionTimestamp = endTimeStr 
-      ? new Date(parseInt(endTimeStr, 10)).toISOString() 
+    const completionTimestamp = endTimeStr
+      ? new Date(parseInt(endTimeStr, 10)).toISOString()
       : new Date().toISOString()
 
     setIsActive(false)
     localStorage.setItem('study_timer_active', 'false')
     localStorage.removeItem('study_timer_endtime')
     localStorage.removeItem('study_timer_time_left')
+    localStorage.removeItem('study_timer_run_mode')
     const startDuration = parseInt(localStorage.getItem('study_timer_start_duration') || '0', 10)
     localStorage.removeItem('study_timer_start_duration')
 
@@ -501,25 +513,32 @@ export default function FocusTimer() {
     if (!endTimeStr) return
 
     const endTime = parseInt(endTimeStr, 10)
+    let finished = false
+    let lastRemaining = -1
 
     const runTimer = () => {
+      if (finished) return true
       const now = Date.now()
       const remaining = Math.max(0, Math.ceil((endTime - now) / 1000))
 
       if (remaining <= 0) {
+        finished = true
         handleCompletionRef.current(mode)
         return true
-      } else {
-        setTimeLeft(remaining)
-        return false
       }
+      // Only re-render when the displayed second actually changes. The 200ms poll keeps
+      // the clock accurate without forcing 5 re-renders/sec of the chart-heavy page.
+      if (remaining !== lastRemaining) {
+        lastRemaining = remaining
+        setTimeLeft(remaining)
+      }
+      return false
     }
 
-    const completed = runTimer()
-    if (completed) return
+    if (runTimer()) return
 
     const interval = setInterval(() => {
-      runTimer()
+      if (runTimer()) clearInterval(interval)
     }, 200)
 
     return () => clearInterval(interval)
@@ -534,6 +553,7 @@ export default function FocusTimer() {
     localStorage.removeItem('study_timer_endtime')
     localStorage.removeItem('study_timer_time_left')
     localStorage.removeItem('study_timer_start_duration')
+    localStorage.removeItem('study_timer_run_mode')
 
     let durationMins = 25
     if (newMode === 'work') durationMins = workDuration
@@ -564,6 +584,8 @@ export default function FocusTimer() {
       endTime = Date.now() + timeLeft * 1000
       localStorage.setItem('study_timer_endtime', endTime.toString())
       localStorage.removeItem('study_timer_time_left')
+      // Pin the mode this run is logged under, independent of later state changes.
+      localStorage.setItem('study_timer_run_mode', mode)
       if (!isResuming) {
         plannedDur = mode === 'work' ? workDuration : mode === 'short' ? shortDuration : longDuration
         localStorage.setItem('study_timer_start_duration', plannedDur.toString())
@@ -822,7 +844,7 @@ export default function FocusTimer() {
     <div className="space-y-6 relative">
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed top-20 right-6 z-50 animate-slide-in-right max-w-sm rounded-2xl border border-purple-500/30 bg-slate-950/95 p-4 shadow-2xl backdrop-blur-md flex items-center gap-3">
+        <div className="fixed top-20 inset-x-4 sm:inset-x-auto sm:right-6 z-50 animate-slide-in-right sm:max-w-sm rounded-2xl border border-purple-500/30 bg-slate-950/95 p-4 shadow-2xl backdrop-blur-md flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-full bg-purple-500/10 text-purple-400 font-bold text-lg select-none">
             {toast.includes('Break') ? '☀️' : '🎯'}
           </div>
@@ -841,18 +863,18 @@ export default function FocusTimer() {
       )}
 
       {/* Header Banner */}
-      <div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 shadow-lg shadow-slate-950/20">
+      <div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-5 sm:p-6 shadow-lg shadow-slate-950/20">
         <h2 className="text-lg font-semibold text-slate-100">Pomodoro Focus Timer</h2>
         <p className="mt-2 text-sm text-slate-400">
           Optimize your productivity using structured blocks of study and break intervals. Customize and review your focus sessions.
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-5 sm:gap-6 md:grid-cols-2">
         {/* LEFT COLUMN: Clock Visualizer & Stats Summary */}
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
           {/* Clock visual card */}
-          <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-8 flex flex-col items-center justify-center min-h-[350px] shadow-lg shadow-slate-950/20">
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/90 p-6 sm:p-8 flex flex-col items-center justify-center min-h-[320px] sm:min-h-[350px] shadow-lg shadow-slate-950/20">
             <div className="relative w-52 h-52 flex items-center justify-center mb-6">
               <svg className="w-full h-full transform -rotate-90">
                 <circle
@@ -883,7 +905,7 @@ export default function FocusTimer() {
               </div>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
               <button
                 type="button"
                 onClick={toggleTimer}
@@ -1033,7 +1055,7 @@ export default function FocusTimer() {
         </div>
 
         {/* RIGHT COLUMN: Preset Select, Customize Steppers & History logs */}
-        <div className="space-y-6 flex flex-col">
+        <div className="space-y-5 sm:space-y-6 flex flex-col">
           {/* Preset Select */}
           <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 space-y-4 shadow-lg shadow-slate-950/20">
             <h3 className="text-base font-semibold text-slate-100">Select Interval</h3>
