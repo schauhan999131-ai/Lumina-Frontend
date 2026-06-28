@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useAppStore } from '../store'
 import * as api from '../api'
 
@@ -380,11 +380,56 @@ export default function StudyNotes() {
   const [workspaceSubTab, setWorkspaceSubTab] = useState('doc') // 'doc' or 'checklist'
   const [lightboxImage, setLightboxImage] = useState(null)
   
+  // Debounced note-save plumbing: accumulate edits and write to the DB at most once
+  // per ~600ms idle window instead of on every keystroke.
+  const noteSaveTimers = useRef({})
+  const pendingNoteUpdates = useRef({})
+  // Track which notes have had their (heavy, lazily-loaded) images fetched.
+  const loadedImageIds = useRef(new Set())
+
+  const flushNoteSave = (id) => {
+    const updates = pendingNoteUpdates.current[id]
+    if (!updates) return
+    delete pendingNoteUpdates.current[id]
+    if (noteSaveTimers.current[id]) {
+      clearTimeout(noteSaveTimers.current[id])
+      delete noteSaveTimers.current[id]
+    }
+    api.updateNote(id, updates).catch((err) => console.error('Error saving note updates:', err))
+  }
+
   // Auto-reset workspace mode and sub-tab to 'doc' when active note changes
   useEffect(() => {
     setWorkspaceMode('edit')
     setWorkspaceSubTab('doc')
   }, [activeNoteId])
+
+  // Flush any pending note writes when leaving the page so edits aren't lost.
+  useEffect(() => {
+    return () => {
+      Object.keys(pendingNoteUpdates.current).forEach((id) => flushNoteSave(id))
+    }
+  }, [])
+
+  // Lazily load the open note's images (the list payload omits them for speed).
+  useEffect(() => {
+    if (!activeNoteId) return
+    const note = notes.find((n) => n._id === activeNoteId || n.id === activeNoteId)
+    if (!note || note.images !== undefined || loadedImageIds.current.has(activeNoteId)) return
+    loadedImageIds.current.add(activeNoteId)
+    api.fetchNote(activeNoteId)
+      .then((res) => {
+        const full = res?.data
+        if (!full) return
+        setNotes((prev) => prev.map((n) =>
+          (n._id === activeNoteId || n.id === activeNoteId) ? { ...n, images: full.images || [] } : n
+        ))
+      })
+      .catch((err) => {
+        console.error('Error loading note images:', err)
+        loadedImageIds.current.delete(activeNoteId)
+      })
+  }, [activeNoteId, notes])
 
   // Fetch and migrate notes on mount
   useEffect(() => {
@@ -535,21 +580,18 @@ export default function StudyNotes() {
   }, [notes])
 
   // --- KNOWLEDGE NOTES FUNCTIONS ---
-  const updateNote = async (id, updatedFields) => {
-    // Instantly update local UI state for snappy interaction
-    const updatedNotes = notes.map((note) => {
-      if (note._id === id || note.id === id) {
-        return { ...note, ...updatedFields }
-      }
-      return note
-    })
-    setNotes(updatedNotes)
+  const updateNote = (id, updatedFields) => {
+    // Instantly update local UI state for snappy interaction (functional update
+    // so rapid successive edits never read a stale `notes` snapshot).
+    setNotes((prev) => prev.map((note) =>
+      (note._id === id || note.id === id) ? { ...note, ...updatedFields } : note
+    ))
 
-    try {
-      await api.updateNote(id, updatedFields)
-    } catch (err) {
-      console.error('Error saving note updates:', err)
-    }
+    // Accumulate the changed fields and debounce the actual DB write so typing
+    // doesn't fire a network request + Mongoose save on every keystroke.
+    pendingNoteUpdates.current[id] = { ...(pendingNoteUpdates.current[id] || {}), ...updatedFields }
+    if (noteSaveTimers.current[id]) clearTimeout(noteSaveTimers.current[id])
+    noteSaveTimers.current[id] = setTimeout(() => flushNoteSave(id), 600)
   }
 
   const handleCreateNewNote = async () => {
@@ -575,6 +617,12 @@ export default function StudyNotes() {
   }
 
   const handleDeleteNote = async (id) => {
+    // Cancel any in-flight debounced save for this note before deleting it.
+    if (noteSaveTimers.current[id]) {
+      clearTimeout(noteSaveTimers.current[id])
+      delete noteSaveTimers.current[id]
+    }
+    delete pendingNoteUpdates.current[id]
     try {
       await api.deleteNote(id)
       const updatedNotes = notes.filter((n) => n._id !== id && n.id !== id)

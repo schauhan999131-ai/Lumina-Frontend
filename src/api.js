@@ -168,6 +168,10 @@ export const updateTimerState = (timerData) =>
 export const fetchNotes = () =>
   request('/api/notes')
 
+// Fetch a single full note including its (heavy) images, loaded on demand.
+export const fetchNote = (noteId) =>
+  request(`/api/notes/${encodeURIComponent(noteId)}`)
+
 export const createNote = (noteData) =>
   request('/api/notes', {
     method: 'POST',
