@@ -50,6 +50,8 @@ export default function FocusTimer() {
   const [shortInput, setShortInput] = useState(shortDuration.toString())
   const [longInput, setLongInput] = useState(longDuration.toString())
 
+  const lastFetchId = useRef(0)
+
   useEffect(() => {
     setWorkInput(workDuration.toString())
   }, [workDuration])
@@ -343,13 +345,22 @@ export default function FocusTimer() {
   }
 
   const fetchBackendTimerState = async () => {
+    const fetchId = ++lastFetchId.current
     try {
       const state = await getTimerState()
+      if (fetchId !== lastFetchId.current) return
       if (state) {
         // A locally-running timer is the source of truth for the live session.
         // If one is active we must NOT adopt the backend's mode/active/endtime below —
         // a stale backend mode would relabel an in-progress focus session as a break.
         const localActive = localStorage.getItem('study_timer_active') === 'true'
+        
+        // If the backend has an active timer but it has already expired, treat it as completed.
+        let isStaleActive = false
+        if (state.studyTimerActive && state.studyTimerEndTime !== undefined && state.studyTimerEndTime > 0 && state.studyTimerEndTime <= Date.now()) {
+          isStaleActive = true
+        }
+
         if (localActive) {
           const endTimeStr = localStorage.getItem('study_timer_endtime')
           const timeLeftStr = localStorage.getItem('study_timer_time_left')
@@ -374,9 +385,82 @@ export default function FocusTimer() {
           setLongDuration(state.studyLongDuration)
           localStorage.setItem('study_long_duration', state.studyLongDuration.toString())
         }
-        // Live-timer fields are only adopted from the backend when there is NO active
-        // local session (otherwise the running session — its mode included — wins).
-        if (!localActive) {
+
+        if (isStaleActive && !localActive) {
+          // The timer expired while the user was away. Log the session as completed and transition to next mode!
+          setIsActive(false)
+          localStorage.setItem('study_timer_active', 'false')
+          localStorage.removeItem('study_timer_endtime')
+          localStorage.removeItem('study_timer_time_left')
+          
+          const completedMode = state.studyTimerMode || 'work'
+          let nextMode = 'work'
+          let nextTimeLeft = 25 * 60
+          if (completedMode === 'work') {
+            nextMode = 'short'
+            const shortMins = state.studyShortDuration !== undefined ? state.studyShortDuration : shortDuration
+            nextTimeLeft = shortMins * 60
+          } else {
+            nextMode = 'work'
+            const workMins = state.studyWorkDuration !== undefined ? state.studyWorkDuration : workDuration
+            nextTimeLeft = workMins * 60
+          }
+          
+          setMode(nextMode)
+          localStorage.setItem('study_timer_mode', nextMode)
+          setTimeLeft(nextTimeLeft)
+
+          const duration = state.studyTimerStartDuration > 0
+            ? state.studyTimerStartDuration
+            : completedMode === 'work'
+              ? (state.studyWorkDuration || 25)
+              : completedMode === 'short'
+                ? (state.studyShortDuration || 5)
+                : (state.studyLongDuration || 15)
+
+          const historyEntry = {
+            id: Date.now(),
+            type: completedMode,
+            duration: duration,
+            timestamp: new Date(state.studyTimerEndTime).toISOString()
+          }
+
+          let updatedHistory = history
+          try {
+            if (state.studyFocusHistory) {
+              const parsed = JSON.parse(state.studyFocusHistory)
+              updatedHistory = [historyEntry, ...parsed]
+            } else {
+              updatedHistory = [historyEntry, ...history]
+            }
+          } catch (e) {
+            updatedHistory = [historyEntry, ...history]
+          }
+          setHistory(updatedHistory)
+          localStorage.setItem('study_focus_history', JSON.stringify(updatedHistory))
+
+          let newSessions = sessionsCompleted
+          let newMins = focusMinutes
+          if (completedMode === 'work') {
+            newSessions = sessionsCompleted + 1
+            newMins = focusMinutes + duration
+            setSessionsCompleted(newSessions)
+            setFocusMinutes(newMins)
+            localStorage.setItem('study_sessions_completed', newSessions.toString())
+            localStorage.setItem('study_focus_minutes', newMins.toString())
+          }
+
+          syncTimerToBackend({
+            studyTimerActive: false,
+            studyTimerEndTime: 0,
+            studyTimerTimeLeft: nextTimeLeft,
+            studyTimerMode: nextMode,
+            studyTimerStartDuration: 0,
+            studySessionsCompleted: newSessions,
+            studyFocusMinutes: newMins,
+            studyFocusHistory: JSON.stringify(updatedHistory)
+          })
+        } else if (!localActive) {
           if (state.studyTimerMode !== undefined) {
             setMode(state.studyTimerMode)
             localStorage.setItem('study_timer_mode', state.studyTimerMode)
@@ -621,6 +705,7 @@ export default function FocusTimer() {
 
   // Handle manual mode changes
   const handleModeChange = (newMode) => {
+    lastFetchId.current++
     setMode(newMode)
     localStorage.setItem('study_timer_mode', newMode)
     setIsActive(false)
@@ -646,6 +731,7 @@ export default function FocusTimer() {
   }
 
   const toggleTimer = () => {
+    lastFetchId.current++
     const newActive = !isActive
     setIsActive(newActive)
     localStorage.setItem('study_timer_active', newActive.toString())
@@ -679,6 +765,7 @@ export default function FocusTimer() {
   }
 
   const resetTimer = () => {
+    lastFetchId.current++
     setIsActive(false)
     localStorage.setItem('study_timer_active', 'false')
     localStorage.removeItem('study_timer_endtime')
@@ -688,6 +775,7 @@ export default function FocusTimer() {
 
   // Stepper setters with boundary limits (1-180 minutes)
   const updateWorkDuration = (val) => {
+    lastFetchId.current++
     const newVal = Math.max(1, Math.min(180, val))
     const oldVal = workDuration
     setWorkDuration(newVal)
@@ -723,6 +811,7 @@ export default function FocusTimer() {
   }
 
   const updateShortDuration = (val) => {
+    lastFetchId.current++
     const newVal = Math.max(1, Math.min(180, val))
     const oldVal = shortDuration
     setShortDuration(newVal)
@@ -758,6 +847,7 @@ export default function FocusTimer() {
   }
 
   const updateLongDuration = (val) => {
+    lastFetchId.current++
     const newVal = Math.max(1, Math.min(180, val))
     const oldVal = longDuration
     setLongDuration(newVal)
