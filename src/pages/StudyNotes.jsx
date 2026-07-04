@@ -387,15 +387,20 @@ export default function StudyNotes() {
   // Track which notes have had their (heavy, lazily-loaded) images fetched.
   const loadedImageIds = useRef(new Set())
 
-  const flushNoteSave = (id) => {
-    const updates = pendingNoteUpdates.current[id]
+  const flushNoteSave = async (id) => {
+    const updates = pendingNoteUpdates.current[id] || JSON.parse(localStorage.getItem(`lumina_draft_note_${id}`) || 'null')
     if (!updates) return
     delete pendingNoteUpdates.current[id]
     if (noteSaveTimers.current[id]) {
       clearTimeout(noteSaveTimers.current[id])
       delete noteSaveTimers.current[id]
     }
-    api.updateNote(id, updates).catch((err) => console.error('Error saving note updates:', err))
+    try {
+      await api.updateNote(id, updates)
+      localStorage.removeItem(`lumina_draft_note_${id}`)
+    } catch (err) {
+      console.error('Error saving note updates:', err)
+    }
   }
 
   // Auto-reset workspace mode and sub-tab to 'doc' when active note changes
@@ -404,10 +409,19 @@ export default function StudyNotes() {
     setWorkspaceSubTab('doc')
   }, [activeNoteId])
 
-  // Flush any pending note writes when leaving the page so edits aren't lost.
+  // Flush any pending note writes when leaving the page or reloading so edits aren't lost.
   useEffect(() => {
+    const handleBeforeUnload = () => {
+      Object.keys(pendingNoteUpdates.current).forEach((id) => {
+        flushNoteSave(id)
+      })
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
-      Object.keys(pendingNoteUpdates.current).forEach((id) => flushNoteSave(id))
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      Object.keys(pendingNoteUpdates.current).forEach((id) => {
+        flushNoteSave(id)
+      })
     }
   }, [])
 
@@ -463,6 +477,24 @@ export default function StudyNotes() {
           const initRes = await api.createNote(initialNotes)
           currentNotes = initRes.data || []
         }
+
+        // Apply any unsaved drafts from localStorage
+        const updatedNotes = currentNotes.map((note) => {
+          const noteId = note._id || note.id
+          const draftStr = localStorage.getItem(`lumina_draft_note_${noteId}`)
+          if (draftStr) {
+            try {
+              const draft = JSON.parse(draftStr)
+              // Trigger a save to database for this draft
+              flushNoteSave(noteId)
+              return { ...note, ...draft }
+            } catch (e) {
+              console.error('Error parsing note draft:', e)
+            }
+          }
+          return note
+        })
+        currentNotes = updatedNotes
 
         setNotes(currentNotes)
 
@@ -589,7 +621,12 @@ export default function StudyNotes() {
 
     // Accumulate the changed fields and debounce the actual DB write so typing
     // doesn't fire a network request + Mongoose save on every keystroke.
-    pendingNoteUpdates.current[id] = { ...(pendingNoteUpdates.current[id] || {}), ...updatedFields }
+    const currentPending = { ...(pendingNoteUpdates.current[id] || {}), ...updatedFields }
+    pendingNoteUpdates.current[id] = currentPending
+
+    // Save draft to localStorage so it is never lost on refresh or navigation
+    localStorage.setItem(`lumina_draft_note_${id}`, JSON.stringify(currentPending))
+
     if (noteSaveTimers.current[id]) clearTimeout(noteSaveTimers.current[id])
     noteSaveTimers.current[id] = setTimeout(() => flushNoteSave(id), 600)
   }
@@ -1154,7 +1191,7 @@ export default function StudyNotes() {
                       <div className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900/30">
                         <span className="text-xs font-bold text-slate-300">💡 Pro Tip</span>
                         <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
-                          Add ledger transactions inside your notes (e.g. <code>[earning: 10 | cat: Sale]</code>) and click Sync to sync with the Wealth Vault.
+                          Use markdown headers (<code>### Heading</code>) and bullet lists (<code>- item</code>) to structure your thoughts and plans.
                         </p>
                       </div>
                       <div className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900/30">
@@ -1185,14 +1222,6 @@ export default function StudyNotes() {
                         className="text-xs px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-355 hover:text-white transition"
                       >
                         ← Close
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSyncNoteVaults(activeNote)}
-                        className="text-[10px] font-bold px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-xl shadow shadow-purple-500/10 transition"
-                        title="Sync transactions and protein tracker data from this note to main vaults"
-                      >
-                        Sync Vaults ⚡
                       </button>
                     </div>
 

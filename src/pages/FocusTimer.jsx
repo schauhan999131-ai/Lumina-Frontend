@@ -32,16 +32,59 @@ export default function FocusTimer() {
   // Configurable durations in minutes (persisted in localStorage)
   const [workDuration, setWorkDuration] = useState(() => {
     const saved = localStorage.getItem('study_work_duration')
-    return saved ? parseInt(saved, 10) : 25
+    const parsed = saved ? parseInt(saved, 10) : 25
+    return isNaN(parsed) ? 25 : parsed
   })
   const [shortDuration, setShortDuration] = useState(() => {
     const saved = localStorage.getItem('study_short_duration')
-    return saved ? parseInt(saved, 10) : 5
+    const parsed = saved ? parseInt(saved, 10) : 5
+    return isNaN(parsed) ? 5 : parsed
   })
   const [longDuration, setLongDuration] = useState(() => {
     const saved = localStorage.getItem('study_long_duration')
-    return saved ? parseInt(saved, 10) : 15
+    const parsed = saved ? parseInt(saved, 10) : 15
+    return isNaN(parsed) ? 15 : parsed
   })
+
+  const [workInput, setWorkInput] = useState(workDuration.toString())
+  const [shortInput, setShortInput] = useState(shortDuration.toString())
+  const [longInput, setLongInput] = useState(longDuration.toString())
+
+  useEffect(() => {
+    setWorkInput(workDuration.toString())
+  }, [workDuration])
+
+  useEffect(() => {
+    setShortInput(shortDuration.toString())
+  }, [shortDuration])
+
+  useEffect(() => {
+    setLongInput(longDuration.toString())
+  }, [longDuration])
+
+  const handleWorkBlur = () => {
+    let val = parseInt(workInput, 10)
+    if (isNaN(val)) val = 25
+    val = Math.max(1, Math.min(180, val))
+    updateWorkDuration(val)
+    setWorkInput(val.toString())
+  }
+
+  const handleShortBlur = () => {
+    let val = parseInt(shortInput, 10)
+    if (isNaN(val)) val = 5
+    val = Math.max(1, Math.min(180, val))
+    updateShortDuration(val)
+    setShortInput(val.toString())
+  }
+
+  const handleLongBlur = () => {
+    let val = parseInt(longInput, 10)
+    if (isNaN(val)) val = 15
+    val = Math.max(1, Math.min(180, val))
+    updateLongDuration(val)
+    setLongInput(val.toString())
+  }
 
   const [mode, setMode] = useState(() => {
     return localStorage.getItem('study_timer_mode') || 'work'
@@ -59,27 +102,30 @@ export default function FocusTimer() {
     let durationMins = 25
     if (savedMode === 'work') {
       const saved = localStorage.getItem('study_work_duration')
-      durationMins = saved ? parseInt(saved, 10) : 25
+      const parsed = saved ? parseInt(saved, 10) : 25
+      durationMins = isNaN(parsed) ? 25 : parsed
     } else if (savedMode === 'short') {
       const saved = localStorage.getItem('study_short_duration')
-      durationMins = saved ? parseInt(saved, 10) : 5
+      const parsed = saved ? parseInt(saved, 10) : 5
+      durationMins = isNaN(parsed) ? 5 : parsed
     } else {
       const saved = localStorage.getItem('study_long_duration')
-      durationMins = saved ? parseInt(saved, 10) : 15
+      const parsed = saved ? parseInt(saved, 10) : 15
+      durationMins = isNaN(parsed) ? 15 : parsed
     }
     
     if (active) {
       const endTime = localStorage.getItem('study_timer_endtime')
       if (endTime) {
         const remaining = Math.ceil((parseInt(endTime, 10) - Date.now()) / 1000)
-        return Math.max(0, remaining)
+        return Math.max(0, isNaN(remaining) ? durationMins * 60 : remaining)
       }
     }
     
     const savedTimeLeft = localStorage.getItem('study_timer_time_left')
     if (savedTimeLeft) {
       const parsed = parseInt(savedTimeLeft, 10)
-      if (parsed > 0) return parsed
+      if (parsed > 0 && !isNaN(parsed)) return parsed
     }
     
     return durationMins * 60
@@ -296,118 +342,147 @@ export default function FocusTimer() {
     }
   }
 
-  // Fetch backend state on mount
-  useEffect(() => {
-    const fetchBackendTimerState = async () => {
-      try {
-        const state = await getTimerState()
-        if (state) {
-          // A locally-running timer is the source of truth for the live session.
-          // If one is active we must NOT adopt the backend's mode/active/endtime below —
-          // a stale backend mode would relabel an in-progress focus session as a break.
-          const localActive = localStorage.getItem('study_timer_active') === 'true'
-          if (localActive) {
-            const endTimeStr = localStorage.getItem('study_timer_endtime')
-            const timeLeftStr = localStorage.getItem('study_timer_time_left')
-            syncTimerToBackend({
-              studyTimerActive: true,
-              studyTimerEndTime: endTimeStr ? parseInt(endTimeStr, 10) : 0,
-              studyTimerTimeLeft: timeLeftStr ? parseInt(timeLeftStr, 10) : 0,
-              studyTimerMode: localStorage.getItem('study_timer_mode') || 'work',
-              studyTimerStartDuration: parseInt(localStorage.getItem('study_timer_start_duration') || '0', 10)
-            })
-          }
+  const fetchBackendTimerState = async () => {
+    try {
+      const state = await getTimerState()
+      if (state) {
+        // A locally-running timer is the source of truth for the live session.
+        // If one is active we must NOT adopt the backend's mode/active/endtime below —
+        // a stale backend mode would relabel an in-progress focus session as a break.
+        const localActive = localStorage.getItem('study_timer_active') === 'true'
+        if (localActive) {
+          const endTimeStr = localStorage.getItem('study_timer_endtime')
+          const timeLeftStr = localStorage.getItem('study_timer_time_left')
+          syncTimerToBackend({
+            studyTimerActive: true,
+            studyTimerEndTime: endTimeStr ? parseInt(endTimeStr, 10) : 0,
+            studyTimerTimeLeft: timeLeftStr ? parseInt(timeLeftStr, 10) : 0,
+            studyTimerMode: localStorage.getItem('study_timer_mode') || 'work',
+            studyTimerStartDuration: parseInt(localStorage.getItem('study_timer_start_duration') || '0', 10)
+          })
+        }
 
-          if (state.studyWorkDuration !== undefined) {
-            setWorkDuration(state.studyWorkDuration)
-            localStorage.setItem('study_work_duration', state.studyWorkDuration.toString())
+        if (state.studyWorkDuration !== undefined) {
+          setWorkDuration(state.studyWorkDuration)
+          localStorage.setItem('study_work_duration', state.studyWorkDuration.toString())
+        }
+        if (state.studyShortDuration !== undefined) {
+          setShortDuration(state.studyShortDuration)
+          localStorage.setItem('study_short_duration', state.studyShortDuration.toString())
+        }
+        if (state.studyLongDuration !== undefined) {
+          setLongDuration(state.studyLongDuration)
+          localStorage.setItem('study_long_duration', state.studyLongDuration.toString())
+        }
+        // Live-timer fields are only adopted from the backend when there is NO active
+        // local session (otherwise the running session — its mode included — wins).
+        if (!localActive) {
+          if (state.studyTimerMode !== undefined) {
+            setMode(state.studyTimerMode)
+            localStorage.setItem('study_timer_mode', state.studyTimerMode)
           }
-          if (state.studyShortDuration !== undefined) {
-            setShortDuration(state.studyShortDuration)
-            localStorage.setItem('study_short_duration', state.studyShortDuration.toString())
+          if (state.studyTimerActive !== undefined) {
+            setIsActive(state.studyTimerActive)
+            localStorage.setItem('study_timer_active', state.studyTimerActive.toString())
           }
-          if (state.studyLongDuration !== undefined) {
-            setLongDuration(state.studyLongDuration)
-            localStorage.setItem('study_long_duration', state.studyLongDuration.toString())
-          }
-          // Live-timer fields are only adopted from the backend when there is NO active
-          // local session (otherwise the running session — its mode included — wins).
-          if (!localActive) {
-            if (state.studyTimerMode !== undefined) {
-              setMode(state.studyTimerMode)
-              localStorage.setItem('study_timer_mode', state.studyTimerMode)
-            }
-            if (state.studyTimerActive !== undefined) {
-              setIsActive(state.studyTimerActive)
-              localStorage.setItem('study_timer_active', state.studyTimerActive.toString())
-            }
-            if (state.studyTimerEndTime !== undefined && state.studyTimerEndTime > 0) {
-              localStorage.setItem('study_timer_endtime', state.studyTimerEndTime.toString())
-              const remaining = Math.max(0, Math.ceil((state.studyTimerEndTime - Date.now()) / 1000))
-              setTimeLeft(remaining)
-            } else if (state.studyTimerTimeLeft !== undefined) {
-              const backendTimeLeft = state.studyTimerTimeLeft
-              if (backendTimeLeft > 0) {
-                setTimeLeft(backendTimeLeft)
-                if (state.studyTimerActive) {
-                  // Active timer with no valid endTime — compute one so the timer effect can run
-                  const computedEndTime = Date.now() + backendTimeLeft * 1000
-                  localStorage.setItem('study_timer_endtime', computedEndTime.toString())
-                  localStorage.removeItem('study_timer_time_left')
-                } else {
-                  localStorage.setItem('study_timer_time_left', backendTimeLeft.toString())
-                }
+          if (state.studyTimerEndTime !== undefined && state.studyTimerEndTime > 0) {
+            localStorage.setItem('study_timer_endtime', state.studyTimerEndTime.toString())
+            const remaining = Math.max(0, Math.ceil((state.studyTimerEndTime - Date.now()) / 1000))
+            setTimeLeft(remaining)
+          } else if (state.studyTimerTimeLeft !== undefined) {
+            const backendTimeLeft = state.studyTimerTimeLeft
+            if (backendTimeLeft > 0) {
+              setTimeLeft(backendTimeLeft)
+              if (state.studyTimerActive) {
+                // Active timer with no valid endTime — compute one so the timer effect can run
+                const computedEndTime = Date.now() + backendTimeLeft * 1000
+                localStorage.setItem('study_timer_endtime', computedEndTime.toString())
+                localStorage.removeItem('study_timer_time_left')
               } else {
-                const currentMode = state.studyTimerMode || mode
-                let durationMins = 25
-                if (currentMode === 'work') {
-                  durationMins = state.studyWorkDuration !== undefined ? state.studyWorkDuration : workDuration
-                } else if (currentMode === 'short') {
-                  durationMins = state.studyShortDuration !== undefined ? state.studyShortDuration : shortDuration
-                } else {
-                  durationMins = state.studyLongDuration !== undefined ? state.studyLongDuration : longDuration
-                }
-                const defaultSeconds = durationMins * 60
-                setTimeLeft(defaultSeconds)
-                localStorage.setItem('study_timer_time_left', defaultSeconds.toString())
+                localStorage.setItem('study_timer_time_left', backendTimeLeft.toString())
               }
-            }
-            if (state.studyTimerStartDuration !== undefined && state.studyTimerStartDuration > 0) {
-              localStorage.setItem('study_timer_start_duration', state.studyTimerStartDuration.toString())
-            }
-          }
-          if (state.studySessionsCompleted !== undefined) {
-            setSessionsCompleted(state.studySessionsCompleted)
-            localStorage.setItem('study_sessions_completed', state.studySessionsCompleted.toString())
-          }
-          if (state.studyFocusMinutes !== undefined) {
-            setFocusMinutes(state.studyFocusMinutes)
-            localStorage.setItem('study_focus_minutes', state.studyFocusMinutes.toString())
-          }
-          if (state.studyFocusHistory !== undefined) {
-            try {
-              const parsedHistory = JSON.parse(state.studyFocusHistory)
-              setHistory(parsedHistory)
-              localStorage.setItem('study_focus_history', state.studyFocusHistory)
-            } catch (e) {
-              console.error('Error parsing focus history:', e)
+            } else {
+              const currentMode = state.studyTimerMode || mode
+              let durationMins = 25
+              if (currentMode === 'work') {
+                durationMins = state.studyWorkDuration !== undefined ? state.studyWorkDuration : workDuration
+              } else if (currentMode === 'short') {
+                durationMins = state.studyShortDuration !== undefined ? state.studyShortDuration : shortDuration
+              } else {
+                durationMins = state.studyLongDuration !== undefined ? state.studyLongDuration : longDuration
+              }
+              const defaultSeconds = durationMins * 60
+              setTimeLeft(defaultSeconds)
+              localStorage.setItem('study_timer_time_left', defaultSeconds.toString())
             }
           }
-          if (state.studyAcceptedDays !== undefined && state.studyAcceptedDays !== null) {
-            try {
-              const parsedAccepted = JSON.parse(state.studyAcceptedDays)
-              setAcceptedDays(parsedAccepted)
-              localStorage.setItem('study_accepted_days', state.studyAcceptedDays)
-            } catch (e) {
-              console.error('Error parsing accepted days:', e)
-            }
+          if (state.studyTimerStartDuration !== undefined && state.studyTimerStartDuration > 0) {
+            localStorage.setItem('study_timer_start_duration', state.studyTimerStartDuration.toString())
           }
         }
-      } catch (err) {
-        console.warn('Could not fetch timer state from backend (running offline/fallback):', err.message)
+        if (state.studySessionsCompleted !== undefined) {
+          setSessionsCompleted(state.studySessionsCompleted)
+          localStorage.setItem('study_sessions_completed', state.studySessionsCompleted.toString())
+        }
+        if (state.studyFocusMinutes !== undefined) {
+          setFocusMinutes(state.studyFocusMinutes)
+          localStorage.setItem('study_focus_minutes', state.studyFocusMinutes.toString())
+        }
+        if (state.studyFocusHistory !== undefined) {
+          try {
+            const parsedHistory = JSON.parse(state.studyFocusHistory)
+            setHistory(parsedHistory)
+            localStorage.setItem('study_focus_history', state.studyFocusHistory)
+          } catch (e) {
+            console.error('Error parsing focus history:', e)
+          }
+        }
+        if (state.studyAcceptedDays !== undefined && state.studyAcceptedDays !== null) {
+          try {
+            const parsedAccepted = JSON.parse(state.studyAcceptedDays)
+            setAcceptedDays(parsedAccepted)
+            localStorage.setItem('study_accepted_days', state.studyAcceptedDays)
+          } catch (e) {
+            console.error('Error parsing accepted days:', e)
+          }
+        }
       }
+    } catch (err) {
+      console.warn('Could not fetch timer state from backend (running offline/fallback):', err.message)
     }
-    fetchBackendTimerState()
+  }
+
+  const fetchBackendTimerStateRef = useRef(fetchBackendTimerState)
+  useEffect(() => {
+    fetchBackendTimerStateRef.current = fetchBackendTimerState
+  })
+
+  // Fetch backend state on mount
+  useEffect(() => {
+    fetchBackendTimerStateRef.current()
+  }, [])
+
+  // Visibility and focus listeners to refresh/re-sync timer state (crucial for mobile background pauses)
+  useEffect(() => {
+    const handleSyncOnInteraction = () => {
+      const active = localStorage.getItem('study_timer_active') === 'true'
+      if (active) {
+        const endTimeStr = localStorage.getItem('study_timer_endtime')
+        if (endTimeStr) {
+          const endTime = parseInt(endTimeStr, 10)
+          const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000))
+          setTimeLeft(isNaN(remaining) ? 0 : remaining)
+        }
+      }
+      fetchBackendTimerStateRef.current()
+    }
+
+    window.addEventListener('visibilitychange', handleSyncOnInteraction)
+    window.addEventListener('focus', handleSyncOnInteraction)
+    return () => {
+      window.removeEventListener('visibilitychange', handleSyncOnInteraction)
+      window.removeEventListener('focus', handleSyncOnInteraction)
+    }
   }, [])
 
   const handleCompletion = (fallbackMode) => {
@@ -732,6 +807,7 @@ export default function FocusTimer() {
   }
 
   const formatTime = (seconds) => {
+    if (isNaN(seconds) || seconds < 0) return '00:00'
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
@@ -1104,7 +1180,16 @@ export default function FocusTimer() {
                   >
                     -
                   </button>
-                  <span className="text-sm font-bold font-mono text-slate-200 w-8 text-center">{workDuration}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={workInput}
+                    onChange={(e) => setWorkInput(e.target.value)}
+                    onBlur={handleWorkBlur}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleWorkBlur() }}
+                    className="w-12 text-center bg-slate-950 border border-slate-800 rounded-lg text-sm font-bold font-mono text-slate-200 focus:outline-none focus:border-purple-500/50 py-0.5"
+                  />
                   <button 
                     type="button" 
                     onClick={() => updateWorkDuration(workDuration + 1)}
@@ -1129,7 +1214,16 @@ export default function FocusTimer() {
                   >
                     -
                   </button>
-                  <span className="text-sm font-bold font-mono text-slate-200 w-8 text-center">{shortDuration}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={shortInput}
+                    onChange={(e) => setShortInput(e.target.value)}
+                    onBlur={handleShortBlur}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleShortBlur() }}
+                    className="w-12 text-center bg-slate-950 border border-slate-800 rounded-lg text-sm font-bold font-mono text-slate-200 focus:outline-none focus:border-purple-500/50 py-0.5"
+                  />
                   <button 
                     type="button" 
                     onClick={() => updateShortDuration(shortDuration + 1)}
@@ -1154,7 +1248,16 @@ export default function FocusTimer() {
                   >
                     -
                   </button>
-                  <span className="text-sm font-bold font-mono text-slate-200 w-8 text-center">{longDuration}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={longInput}
+                    onChange={(e) => setLongInput(e.target.value)}
+                    onBlur={handleLongBlur}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleLongBlur() }}
+                    className="w-12 text-center bg-slate-950 border border-slate-800 rounded-lg text-sm font-bold font-mono text-slate-200 focus:outline-none focus:border-purple-500/50 py-0.5"
+                  />
                   <button 
                     type="button" 
                     onClick={() => updateLongDuration(longDuration + 1)}

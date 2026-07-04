@@ -4,8 +4,6 @@ import Dashboard from './pages/Dashboard'
 import Tasks from './pages/Tasks'
 import FocusTimer from './pages/FocusTimer'
 import StudyNotes from './pages/StudyNotes'
-import WealthVault from './pages/WealthVault'
-import HealthVault from './pages/HealthVault'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import { useAppStore } from './store'
@@ -141,8 +139,6 @@ function MainLayout() {
       { path: '/tasks', label: 'Tasks', icon: '📋' },
       { path: '/focus', label: 'Focus Timer', icon: '⏱️' },
       { path: '/vault', label: 'Knowledge Vault', icon: '📚' },
-      { path: '/wealth', label: 'Wealth Vault', icon: '💵' },
-      { path: '/health', label: 'Health Vault', icon: '🥗' },
     ]
   }, [])
 
@@ -374,8 +370,6 @@ function MainLayout() {
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/focus" element={<FocusTimer />} />
                 <Route path="/vault" element={<StudyNotes />} />
-                <Route path="/wealth" element={<WealthVault />} />
-                <Route path="/health" element={<HealthVault />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
