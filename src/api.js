@@ -216,3 +216,27 @@ export const resetAllVocabStatus = (status) =>
     body: JSON.stringify({ status }),
   })
 
+// Life Architecture Planner API
+export const fetchLifeGoals = () =>
+  request('/api/life-goals')
+
+export const fetchLifeGoal = (lifeGoalId) =>
+  request(`/api/life-goals/${encodeURIComponent(lifeGoalId)}`)
+
+export const createLifeGoal = (lifeGoalData) =>
+  request('/api/life-goals', {
+    method: 'POST',
+    body: JSON.stringify(lifeGoalData),
+  })
+
+export const updateLifeGoal = (lifeGoalId, updateData) =>
+  request(`/api/life-goals/${encodeURIComponent(lifeGoalId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(updateData),
+  })
+
+export const deleteLifeGoal = (lifeGoalId) =>
+  request(`/api/life-goals/${encodeURIComponent(lifeGoalId)}`, {
+    method: 'DELETE',
+  })
+

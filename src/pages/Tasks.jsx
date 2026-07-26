@@ -1,5 +1,10 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, lazy, Suspense } from 'react'
 import { useAppStore } from '../store'
+
+// The Life Architecture canvas pulls in reactflow, a large dependency — code
+// splitting it means that weight is only downloaded when this tab is opened,
+// not on every page load.
+const LifeMapCanvas = lazy(() => import('../components/lifegoals/LifeMapCanvas'))
 
 export default function Tasks() {
   const tasks = useAppStore((state) => state.tasks)
@@ -8,7 +13,7 @@ export default function Tasks() {
   const updateTask = useAppStore((state) => state.updateTask)
   const removeTask = useAppStore((state) => state.removeTask)
 
-  // Navigation Tabs: 'boards' | 'modeler'
+  // Navigation Tabs: 'boards' | 'modeler' (Life Architecture Planner)
   const [activeTab, setActiveTab] = useState('boards')
 
   // Standard Task Form State
@@ -18,19 +23,6 @@ export default function Tasks() {
   
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
-
-  // Architecture Modeler State
-  const [projectName, setProjectName] = useState('')
-  const [techStack, setTechStack] = useState('React, Node, Express, MongoDB')
-  const [routesInput, setRoutesInput] = useState('/, /login, /dashboard, /settings')
-  const [endpointsInput, setEndpointsInput] = useState('POST /api/auth/login, GET /api/tasks, PUT /api/tasks/:id')
-  const [collectionsInput, setCollectionsInput] = useState('users, tasks, logs')
-  const [featuresInput, setFeaturesInput] = useState('JWT Authentication, Real-time notification, Theme toggle')
-  
-  const [modeledProject, setModeledProject] = useState(null)
-  const [generatedTasks, setGeneratedTasks] = useState([])
-  const [importLoading, setImportLoading] = useState(false)
-  const [modelSuccessMsg, setModelSuccessMsg] = useState('')
 
   useEffect(() => {
     setLoading(true)
@@ -86,121 +78,6 @@ export default function Tasks() {
       if (aComp !== bComp) return aComp - bComp
       return (priorityWeight[b.priority] || 2) - (priorityWeight[a.priority] || 2)
     })
-  }
-
-  // Generate Architecture Map and Tasks
-  const handleModelProject = (e) => {
-    e.preventDefault()
-    if (!projectName.trim()) return
-
-    const routes = routesInput.split(',').map(r => r.trim()).filter(Boolean)
-    const endpoints = endpointsInput.split(',').map(e => e.trim()).filter(Boolean)
-    const collections = collectionsInput.split(',').map(c => c.trim()).filter(Boolean)
-    const features = featuresInput.split(',').map(f => f.trim()).filter(Boolean)
-
-    const project = {
-      name: projectName.trim(),
-      techStack: techStack.trim(),
-      routes,
-      endpoints,
-      collections,
-      features
-    }
-
-    // Generate smart setup task suggestions
-    const tasksList = []
-    
-    // 1. Database Collections setup
-    collections.forEach((col) => {
-      tasksList.push({
-        id: `db-${col}`,
-        title: `Database: Design Mongoose schema and index validations for [${col}]`,
-        category: 'Weekly',
-        priority: 'High',
-        checked: true
-      })
-    })
-
-    // 2. Frontend Routes setup
-    routes.forEach((route) => {
-      tasksList.push({
-        id: `fe-${route}`,
-        title: `Frontend: Build layout view and controller bindings for route [${route}]`,
-        category: 'Daily',
-        priority: 'Medium',
-        checked: true
-      })
-    })
-
-    // 3. Backend API Endpoints setup
-    endpoints.forEach((ep) => {
-      tasksList.push({
-        id: `be-${ep}`,
-        title: `Backend: Write endpoint route controller logic for [${ep}]`,
-        category: 'Weekly',
-        priority: 'High',
-        checked: true
-      })
-    })
-
-    // 4. Feature implementation
-    features.forEach((feat) => {
-      tasksList.push({
-        id: `ft-${feat}`,
-        title: `Feature: Code the workflow logic and run tests for [${feat}]`,
-        category: 'Daily',
-        priority: 'Medium',
-        checked: true
-      })
-    })
-
-    setModeledProject(project)
-    setGeneratedTasks(tasksList)
-    setModelSuccessMsg('Website structure modeled successfully! Check the generated checklist below.')
-    setTimeout(() => setModelSuccessMsg(''), 4000)
-  }
-
-  // Toggle checklist checkboxes
-  const handleToggleTaskCheck = (taskId) => {
-    setGeneratedTasks(prev => 
-      prev.map(t => t.id === taskId ? { ...t, checked: !t.checked } : t)
-    )
-  }
-
-  // Update dynamic task priority/category in checklist
-  const handleModifyGeneratedTask = (taskId, field, value) => {
-    setGeneratedTasks(prev => 
-      prev.map(t => t.id === taskId ? { ...t, [field]: value } : t)
-    )
-  }
-
-  // Batch import selected generated tasks onto boards
-  const handleImportTasks = async () => {
-    const importable = generatedTasks.filter(t => t.checked)
-    if (importable.length === 0) return
-
-    setImportLoading(true)
-    setError(null)
-    try {
-      // Create all tasks in sequence
-      for (const t of importable) {
-        await addTask({
-          title: `${modeledProject.name} - ${t.title}`,
-          category: t.category,
-          priority: t.priority,
-          status: 'Not Started'
-        })
-      }
-      // Reset form and model states
-      setProjectName('')
-      setModeledProject(null)
-      setGeneratedTasks([])
-      setActiveTab('boards') // Route back to planner boards to show imports
-    } catch (err) {
-      setError(err.message || 'Failed to import architecture tasks.')
-    } finally {
-      setImportLoading(false)
-    }
   }
 
   const renderTaskCard = (task) => {
@@ -305,7 +182,7 @@ export default function Tasks() {
                 : 'text-slate-400 border border-transparent hover:text-slate-200'
             }`}
           >
-            <span>🏗️</span> Architecture Modeler
+            <span>🧭</span> Life Architecture
           </button>
         </div>
       </div>
@@ -440,237 +317,11 @@ export default function Tasks() {
         </>
       )}
 
-      {/* VIEW 2: Architecture Modeler Tab */}
+      {/* VIEW 2: Life Architecture Planner Tab */}
       {activeTab === 'modeler' && (
-        <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr] items-start animate-fade-in">
-          {/* Blueprint Form */}
-          <section className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-lg space-y-5">
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Architecture Modeler</h3>
-              <p className="text-xs text-slate-500 mt-1">Design sitemaps & schemas for any project.</p>
-            </div>
-
-            {modelSuccessMsg && (
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-300 font-semibold">
-                {modelSuccessMsg}
-              </div>
-            )}
-
-            <form onSubmit={handleModelProject} className="space-y-4">
-              <label className="block text-xs font-semibold text-slate-300">
-                Website / App Name
-                <input
-                  required
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  placeholder="e.g. Portfolio site, E-Commerce platform"
-                />
-              </label>
-
-              <label className="block text-xs font-semibold text-slate-300">
-                Target Technology Stack
-                <input
-                  required
-                  value={techStack}
-                  onChange={(e) => setTechStack(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  placeholder="e.g. React, Express, MongoDB, Node"
-                />
-              </label>
-
-              <label className="block text-xs font-semibold text-slate-300">
-                Client Page Routes (Comma separated)
-                <textarea
-                  rows={2}
-                  required
-                  value={routesInput}
-                  onChange={(e) => setRoutesInput(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  placeholder="/, /login, /dashboard"
-                />
-              </label>
-
-              <label className="block text-xs font-semibold text-slate-300">
-                Server Endpoints (Comma separated)
-                <textarea
-                  rows={2}
-                  required
-                  value={endpointsInput}
-                  onChange={(e) => setEndpointsInput(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  placeholder="GET /api/users, POST /api/tasks"
-                />
-              </label>
-
-              <label className="block text-xs font-semibold text-slate-300">
-                Database Tables / Collections (Comma separated)
-                <textarea
-                  rows={2}
-                  required
-                  value={collectionsInput}
-                  onChange={(e) => setCollectionsInput(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  placeholder="users, products, logs"
-                />
-              </label>
-
-              <label className="block text-xs font-semibold text-slate-300">
-                Core Features / Middleware (Comma separated)
-                <textarea
-                  rows={2}
-                  required
-                  value={featuresInput}
-                  onChange={(e) => setFeaturesInput(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                  placeholder="Stripe Payment, Password Hashing"
-                />
-              </label>
-
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 py-3 text-xs font-bold text-white shadow-lg hover:from-purple-600 hover:to-indigo-700 transition"
-              >
-                Model Website & Generate Tasks
-              </button>
-            </form>
-          </section>
-
-          {/* Topology Preview & Checklist importer */}
-          <div className="space-y-6">
-            {!modeledProject ? (
-              <div className="rounded-3xl border border-slate-800 border-dashed p-16 text-center text-slate-500 bg-slate-950/20">
-                <div className="text-3xl mb-4">🏗️</div>
-                <h4 className="text-sm font-semibold text-slate-400">Empty Topology Slate</h4>
-                <p className="text-xs text-slate-600 mt-2 max-w-[280px] mx-auto leading-relaxed">
-                  Fill in the architecture specs on the left and click submit to map the sitemap and generate checklist tasks.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6 animate-fade-in">
-                {/* Visual System Topology Map */}
-                <div className="rounded-3xl border border-slate-800 bg-slate-950 p-6 shadow-xl space-y-5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] uppercase font-extrabold tracking-widest text-indigo-400">Topology Map</span>
-                    <span className="text-[10px] font-bold text-slate-500">Stack: {modeledProject.techStack}</span>
-                  </div>
-                  <h4 className="text-base font-black text-slate-100 leading-none">{modeledProject.name}</h4>
-
-                  {/* Flow Map Blocks */}
-                  <div className="grid gap-4 md:grid-cols-3 items-stretch relative mt-4">
-                    {/* Block A: Client */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
-                      <span className="block text-[8px] font-extrabold uppercase tracking-widest text-slate-500">Client UI (Routes)</span>
-                      <div className="mt-2.5 space-y-1">
-                        {modeledProject.routes.map(r => (
-                          <span key={r} className="block text-[10px] font-mono text-purple-300 truncate bg-purple-500/5 px-2 py-0.5 rounded border border-purple-500/10">{r}</span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Block B: API Server */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between relative">
-                      <span className="block text-[8px] font-extrabold uppercase tracking-widest text-slate-500">API Gateway (Endpoints)</span>
-                      <div className="mt-2.5 space-y-1">
-                        {modeledProject.endpoints.map(ep => (
-                          <span key={ep} className="block text-[10px] font-mono text-emerald-300 truncate bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10">{ep}</span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Block C: Datastore */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
-                      <span className="block text-[8px] font-extrabold uppercase tracking-widest text-slate-500">DB Datastore (Collections)</span>
-                      <div className="mt-2.5 space-y-1">
-                        {modeledProject.collections.map(col => (
-                          <span key={col} className="block text-[10px] font-mono text-amber-300 truncate bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10">{col}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Features Panel */}
-                  <div className="border-t border-slate-850/80 pt-4 flex flex-wrap gap-2">
-                    {modeledProject.features.map(f => (
-                      <span key={f} className="text-[9px] font-bold px-2 py-1 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
-                        ⚙️ {f}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* generated task list checklist selector */}
-                <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-xl space-y-5">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-300">Generated Implementation Tasks</h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Customize timeframes and import checklist to boards.</p>
-                    </div>
-                    <span className="text-[10px] px-2 py-1 rounded-full bg-slate-950 font-bold border border-slate-850 text-indigo-400">
-                      {generatedTasks.filter(t => t.checked).length} Selected
-                    </span>
-                  </div>
-
-                  {/* Tasks items scroll view */}
-                  <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
-                    {generatedTasks.map((t) => (
-                      <div key={t.id} className="flex items-start gap-3 p-3 rounded-xl bg-slate-950 border border-slate-850/60 transition">
-                        <input
-                          type="checkbox"
-                          checked={t.checked}
-                          onChange={() => handleToggleTaskCheck(t.id)}
-                          className="mt-1.5 cursor-pointer accent-purple-500"
-                        />
-                        <div className="flex-1 space-y-2 min-w-0">
-                          <p className={`text-xs font-bold leading-relaxed ${t.checked ? 'text-slate-200' : 'text-slate-500 line-through'}`}>
-                            {t.title}
-                          </p>
-                          
-                          {/* Modifiers */}
-                          <div className="flex flex-wrap gap-2">
-                            {/* Category Selector */}
-                            <select
-                              value={t.category}
-                              disabled={!t.checked}
-                              onChange={(e) => handleModifyGeneratedTask(t.id, 'category', e.target.value)}
-                              className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[8px] font-bold text-slate-400 focus:outline-none disabled:opacity-50"
-                            >
-                              <option value="Daily">Daily Board</option>
-                              <option value="Weekly">Weekly Board</option>
-                              <option value="Yearly">Yearly Board</option>
-                            </select>
-
-                            {/* Priority Selector */}
-                            <select
-                              value={t.priority}
-                              disabled={!t.checked}
-                              onChange={(e) => handleModifyGeneratedTask(t.id, 'priority', e.target.value)}
-                              className="bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-[8px] font-bold text-slate-400 focus:outline-none disabled:opacity-50"
-                            >
-                              <option value="High">🔴 High Priority</option>
-                              <option value="Medium">🟡 Medium Priority</option>
-                              <option value="Low">🔵 Low Priority</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Importer Action */}
-                  <button
-                    type="button"
-                    disabled={importLoading || generatedTasks.filter(t => t.checked).length === 0}
-                    onClick={handleImportTasks}
-                    className="w-full rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 py-3 text-xs font-bold text-white shadow-lg shadow-purple-500/15 hover:from-purple-600 hover:to-indigo-700 transition disabled:opacity-50"
-                  >
-                    {importLoading ? 'Importing Tasks to Board...' : `Import Checked Tasks to Planner Boards`}
-                  </button>
-                </section>
-              </div>
-            )}
-          </div>
-        </div>
+        <Suspense fallback={<div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-12 text-center text-slate-400">Loading Life Architecture Planner...</div>}>
+          <LifeMapCanvas />
+        </Suspense>
       )}
     </div>
   )
