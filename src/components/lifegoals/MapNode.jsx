@@ -45,7 +45,7 @@ export default function MapNode({ id, data }) {
 
   return (
     <div
-      className="group relative px-4 py-2.5 rounded-2xl text-xs font-semibold min-w-[130px] max-w-[220px] shadow-lg cursor-grab active:cursor-grabbing"
+      className={`group relative px-4 py-2.5 rounded-2xl text-xs font-semibold min-w-[130px] max-w-[220px] shadow-lg cursor-grab active:cursor-grabbing flex items-start gap-2 ${data.completed ? 'opacity-50' : ''}`}
       style={KIND_STYLE[data.kind]}
       onDoubleClick={(e) => {
         e.stopPropagation()
@@ -56,6 +56,14 @@ export default function MapNode({ id, data }) {
       <Handle type="target" position={Position.Left} className={HANDLE_CLASS} />
       <Handle type="source" position={Position.Bottom} className={HANDLE_CLASS} />
       <Handle type="source" position={Position.Right} className={HANDLE_CLASS} />
+
+      <input
+        type="checkbox"
+        checked={!!data.completed}
+        onChange={() => data.onToggleComplete(id)}
+        className="nodrag mt-0.5 w-3.5 h-3.5 shrink-0 accent-current cursor-pointer"
+        title={data.completed ? 'Mark as not done' : 'Mark as done'}
+      />
 
       {editing ? (
         <input
@@ -73,7 +81,7 @@ export default function MapNode({ id, data }) {
           }}
         />
       ) : (
-        <span className="break-words">{data.label}</span>
+        <span className={`break-words ${data.completed ? 'line-through' : ''}`}>{data.label}</span>
       )}
 
       <button

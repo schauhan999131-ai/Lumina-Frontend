@@ -33,12 +33,12 @@ const BOARD_CATEGORY = { goal: 'Yearly', task: 'Daily', avoid: 'Weekly', note: '
 
 // Converts a saved {id,label,kind,x,y} record into a ReactFlow node, wiring
 // up the label-edit/delete callbacks that live on the parent component.
-function toFlowNode(record, onLabelChange, onDelete, autoEdit = false) {
+function toFlowNode(record, onLabelChange, onDelete, onToggleComplete, autoEdit = false) {
   return {
     id: record.id,
     type: 'mapNode',
     position: { x: record.x, y: record.y },
-    data: { label: record.label, kind: record.kind, onLabelChange, onDelete, autoEdit },
+    data: { label: record.label, kind: record.kind, completed: !!record.completed, onLabelChange, onDelete, onToggleComplete, autoEdit },
   }
 }
 
@@ -86,6 +86,10 @@ function CanvasEditor() {
     setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, label, autoEdit: false } } : n)))
   }, [])
 
+  const handleToggleComplete = useCallback((id) => {
+    setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, completed: !n.data.completed } } : n)))
+  }, [])
+
   const refreshSavedMaps = useCallback(async () => {
     setSavedLoading(true)
     try {
@@ -103,7 +107,7 @@ function CanvasEditor() {
 
   const buildPayload = useCallback(() => ({
     title: title.trim(),
-    nodes: nodes.map((n) => ({ id: n.id, label: n.data.label, kind: n.data.kind, x: n.position.x, y: n.position.y })),
+    nodes: nodes.map((n) => ({ id: n.id, label: n.data.label, kind: n.data.kind, x: n.position.x, y: n.position.y, completed: !!n.data.completed })),
     edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
   }), [title, nodes, edges])
 
@@ -116,9 +120,9 @@ function CanvasEditor() {
   const addNode = useCallback((kind, position) => {
     setNodes((nds) => [
       ...nds,
-      toFlowNode({ id: genId(), label: `New ${kind}`, kind, x: position.x, y: position.y }, handleLabelChange, handleDeleteNode, true),
+      toFlowNode({ id: genId(), label: `New ${kind}`, kind, x: position.x, y: position.y }, handleLabelChange, handleDeleteNode, handleToggleComplete, true),
     ])
-  }, [handleLabelChange, handleDeleteNode])
+  }, [handleLabelChange, handleDeleteNode, handleToggleComplete])
 
   const handleToolbarAdd = (kind) => {
     // Drop the new node near the center of the current viewport, nudged so
@@ -136,7 +140,7 @@ function CanvasEditor() {
   const handleLoadTemplate = (template) => {
     setError(null)
     setTitle(template.name)
-    setNodes(template.nodes.map((n) => toFlowNode(n, handleLabelChange, handleDeleteNode)))
+    setNodes(template.nodes.map((n) => toFlowNode(n, handleLabelChange, handleDeleteNode, handleToggleComplete)))
     setEdges(template.edges.map(toFlowEdge))
     setCurrentMapId(null)
     setLoadKey((k) => k + 1)
@@ -149,7 +153,7 @@ function CanvasEditor() {
       const res = await api.fetchLifeGoal(mapSummary._id)
       const full = res.data
       setTitle(full.title)
-      setNodes((full.nodes || []).map((n) => toFlowNode(n, handleLabelChange, handleDeleteNode)))
+      setNodes((full.nodes || []).map((n) => toFlowNode(n, handleLabelChange, handleDeleteNode, handleToggleComplete)))
       setEdges((full.edges || []).map(toFlowEdge))
       setCurrentMapId(full._id)
       setLoadKey((k) => k + 1)
@@ -162,7 +166,7 @@ function CanvasEditor() {
     } catch (err) {
       setError(err.message || 'Failed to load life map.')
     }
-  }, [handleLabelChange, handleDeleteNode, flashStatus])
+  }, [handleLabelChange, handleDeleteNode, handleToggleComplete, flashStatus])
 
   // On first mount, silently restore whatever you were last working on — so
   // opening the tab on another device, or after a refresh, shows your map

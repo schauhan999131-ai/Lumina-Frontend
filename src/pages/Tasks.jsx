@@ -15,6 +15,10 @@ export default function Tasks() {
 
   // Navigation Tabs: 'boards' | 'modeler' (Life Architecture Planner)
   const [activeTab, setActiveTab] = useState('boards')
+  // Tracks whether the modeler tab has ever been opened this session, so it
+  // can be lazy-mounted on first visit and then kept alive (just hidden)
+  // rather than mounted/unmounted on every tab switch.
+  const [hasOpenedModeler, setHasOpenedModeler] = useState(false)
 
   // Standard Task Form State
   const [title, setTitle] = useState('')
@@ -175,7 +179,10 @@ export default function Tasks() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('modeler')}
+            onClick={() => {
+              setActiveTab('modeler')
+              setHasOpenedModeler(true)
+            }}
             className={`rounded-xl px-4 py-2.5 text-xs font-bold transition flex items-center gap-2 ${
               activeTab === 'modeler'
                 ? 'bg-purple-600/20 border border-purple-500/30 text-purple-300 shadow-md shadow-purple-600/5'
@@ -317,11 +324,17 @@ export default function Tasks() {
         </>
       )}
 
-      {/* VIEW 2: Life Architecture Planner Tab */}
-      {activeTab === 'modeler' && (
-        <Suspense fallback={<div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-12 text-center text-slate-400">Loading Life Architecture Planner...</div>}>
-          <LifeMapCanvas />
-        </Suspense>
+      {/* VIEW 2: Life Architecture Planner Tab. Once opened, this stays
+          mounted and is only hidden with CSS on later tab switches — fully
+          unmounting it would wipe out any edit still inside the autosave
+          debounce window and force a refetch + re-render every time you
+          switch back to it. */}
+      {hasOpenedModeler && (
+        <div className={activeTab === 'modeler' ? '' : 'hidden'}>
+          <Suspense fallback={<div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-12 text-center text-slate-400">Loading Life Architecture Planner...</div>}>
+            <LifeMapCanvas />
+          </Suspense>
+        </div>
       )}
     </div>
   )
