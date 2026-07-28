@@ -71,6 +71,11 @@ function CanvasEditor() {
   // re-saving data that hasn't actually changed (e.g. right after a load).
   const lastSavedSignatureRef = useRef('')
   const hasAutoLoadedRef = useRef(false)
+  // True only during the very first restore-on-mount fetch, so the canvas can
+  // show a real loading state instead of the "Empty Canvas" placeholder —
+  // otherwise a saved map with nodes briefly looks like it got wiped while it
+  // loads, then "pops in", which reads as an accidental refresh.
+  const [isRestoring, setIsRestoring] = useState(true)
 
   const flashStatus = useCallback((msg) => {
     setStatusMsg(msg)
@@ -171,18 +176,26 @@ function CanvasEditor() {
   // On first mount, silently restore whatever you were last working on — so
   // opening the tab on another device, or after a refresh, shows your map
   // instead of a blank canvas.
+  //
+  // hasAutoLoadedRef is set synchronously, before the first await, so this
+  // only ever runs once per component instance even under React StrictMode's
+  // dev-mode double-invoke of effects — without this guard the restore fetch
+  // (and its list refetch) fires twice on every load. Deliberately no
+  // "cancelled" cleanup flag here: StrictMode's dev-mode double-invoke runs
+  // this effect's cleanup synchronously, before the fetch above resolves —
+  // a cancelled flag would poison the one real run before it ever completes,
+  // leaving isRestoring stuck true forever. hasAutoLoadedRef alone is enough
+  // to make sure this only ever does real work once.
   useEffect(() => {
-    let cancelled = false
+    if (hasAutoLoadedRef.current) return
+    hasAutoLoadedRef.current = true
     ;(async () => {
       const list = await refreshSavedMaps()
-      if (!cancelled && !hasAutoLoadedRef.current && list.length > 0) {
-        hasAutoLoadedRef.current = true
+      if (list.length > 0) {
         await handleLoadSaved(list[0])
       }
+      setIsRestoring(false)
     })()
-    return () => {
-      cancelled = true
-    }
   }, [refreshSavedMaps, handleLoadSaved])
 
   const handleDeleteSaved = async (id) => {
@@ -372,7 +385,11 @@ function CanvasEditor() {
       </div>
 
       <div ref={wrapperRef} onDoubleClick={handleWrapperDoubleClick} className="h-[560px] rounded-3xl border border-slate-800 bg-slate-950 overflow-hidden">
-        {nodes.length === 0 ? (
+        {isRestoring ? (
+          <div className="h-full flex items-center justify-center text-center px-6">
+            <div className="text-xs text-slate-500">Loading your life map...</div>
+          </div>
+        ) : nodes.length === 0 ? (
           <div className="h-full flex items-center justify-center text-center px-6">
             <div>
               <div className="text-3xl mb-4">🧭</div>
