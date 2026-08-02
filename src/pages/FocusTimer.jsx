@@ -1030,10 +1030,9 @@ export default function FocusTimer() {
 
       {/* Header Banner */}
       <div className="rounded-3xl border border-slate-800 bg-slate-950/90 p-5 sm:p-6 shadow-lg shadow-slate-950/20">
-        <h2 className="text-lg font-semibold text-slate-100">Pomodoro Focus Timer</h2>
+        <h2 className="text-lg font-semibold text-slate-100">Last chance</h2>
         <p className="mt-2 text-sm text-slate-400">
-          Optimize your productivity using structured blocks of study and break intervals. Customize and review your focus sessions.
-        </p>
+       i did not follow this focuse than i will delete this app and every notes        </p>
       </div>
 
       <div className="grid gap-5 sm:gap-6 md:grid-cols-2">
