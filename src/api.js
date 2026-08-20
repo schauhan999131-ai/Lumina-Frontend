@@ -1,5 +1,5 @@
 export const API_BASE = import.meta.env.PROD
-  ? '/api'
+  ? ''
   : (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || 'http://localhost:4000')
 
 

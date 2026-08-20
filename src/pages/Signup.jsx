@@ -18,7 +18,7 @@ export default function Signup() {
   useEffect(() => {
     const warmUp = async () => {
       try {
-        await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(60000) })
+        await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(60000) })
         setServerStatus('ready')
       } catch {
         setServerStatus('error')
