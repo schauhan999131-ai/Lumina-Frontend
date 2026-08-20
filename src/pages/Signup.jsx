@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store'
-
-const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || 'http://localhost:4000'
+import { API_BASE } from '../api'
 
 export default function Signup() {
   const [email, setEmail] = useState('')
@@ -19,7 +18,7 @@ export default function Signup() {
   useEffect(() => {
     const warmUp = async () => {
       try {
-        await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(60000) })
+        await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(60000) })
         setServerStatus('ready')
       } catch {
         setServerStatus('error')
