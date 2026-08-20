@@ -5,18 +5,27 @@ export const API_BASE = import.meta.env.PROD
 
 async function request(path, options = {}) {
   try {
-    const response = await fetch(`${API_BASE}${path}`, {
-      credentials: 'include', // This sends cookies automatically
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    })
+    let response
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      response = await fetch(`${API_BASE}${path}`, {
+        credentials: 'include',
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      })
+
+      if (![429, 502, 503, 504].includes(response.status) || attempt === 2) break
+      await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)))
+    }
 
     const body = await response.json().catch(() => null)
     
     if (!response.ok) {
+      if ([429, 502, 503, 504].includes(response.status)) {
+        throw new Error('The backend is waking up or temporarily busy. Please try again in a moment.')
+      }
       throw new Error(body?.error || body?.message || `HTTP ${response.status}: ${response.statusText}`)
     }
     
