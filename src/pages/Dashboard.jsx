@@ -139,6 +139,8 @@ export default function Dashboard() {
 
     if (isAuthenticated) {
       loadData()
+    } else {
+      setLoading(false)
     }
     
     // Load Core Pillars checklist for today

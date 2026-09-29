@@ -114,12 +114,18 @@ export const useAppStore = create(
           })
           return true
         } catch (error) {
-          set({
-            isAuthenticated: false,
-            userEmail: '',
-            userId: null,
-          })
-          return false
+          const message = error?.message || ''
+          const authenticationRejected = /not authenticated|invalid or expired token|http 401|http 404|user not found/i.test(message)
+
+          if (authenticationRejected) {
+            set({
+              isAuthenticated: false,
+              userEmail: '',
+              userId: null,
+            })
+          }
+
+          return get().isAuthenticated
         }
       },
       

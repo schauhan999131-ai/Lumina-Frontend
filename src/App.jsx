@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Tasks from './pages/Tasks'
 import FocusTimer from './pages/FocusTimer'
 import StudyNotes from './pages/StudyNotes'
-import Login from './pages/Login'
-import Signup from './pages/Signup'
 import { useAppStore } from './store'
 import './App.css'
 
@@ -38,35 +36,14 @@ export function renderAvatar(picUrl, className = "w-10 h-10") {
 }
 
 function MainLayout() {
-  const isAuthenticated = useAppStore((state) => state.isAuthenticated)
-  const userEmail = useAppStore((state) => state.userEmail)
-  const role = useAppStore((state) => state.role)
   const profilePicture = useAppStore((state) => state.profilePicture)
   const occupation = useAppStore((state) => state.occupation)
-  const isSubscribedYoutube = useAppStore((state) => state.isSubscribedYoutube)
   const theme = useAppStore((state) => state.theme) || 'dark'
   
   const logout = useAppStore((state) => state.logout)
-  const checkAuth = useAppStore((state) => state.checkAuth)
   const updateProfile = useAppStore((state) => state.updateProfile)
-  const subscribeYoutube = useAppStore((state) => state.subscribeYoutube)
-
-  const [clickedSub, setClickedSub] = useState(false)
-  const [subLoading, setSubLoading] = useState(false)
-
-  const handleConfirmUnlock = async () => {
-    setSubLoading(true)
-    try {
-      await subscribeYoutube()
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setSubLoading(false)
-    }
-  }
   
   const navigate = useNavigate()
-  const location = useLocation()
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
@@ -78,10 +55,6 @@ function MainLayout() {
   const [saveLoading, setSaveLoading] = useState(false)
   const [profileError, setProfileError] = useState(null)
   
-  useEffect(() => {
-    checkAuth()
-  }, [checkAuth])
-
   useEffect(() => {
     if (theme === 'light') {
       document.documentElement.classList.add('light')
@@ -219,81 +192,9 @@ function MainLayout() {
     </div>
   )
 
-  // If authenticated but not subscribed, render subscription wall
-  if (isAuthenticated && !isSubscribedYoutube) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
-        {/* Glowing background circles */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-3xl"></div>
-        </div>
-
-        <div className="w-full max-w-md relative z-10 animate-fade-in">
-          <div className="rounded-3xl border border-purple-500/20 bg-slate-900/60 backdrop-blur-xl p-8 shadow-2xl text-center space-y-6">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 text-4xl shadow-lg shadow-rose-500/10 animate-pulse mx-auto">
-              📺
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-slate-100 tracking-tight">YouTube Subscription Required</h2>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                To activate and unlock the **Lumina Personal Growth & Wealth Operating System**, please subscribe to the Coding Yatra YouTube channel.
-              </p>
-            </div>
-
-            <div className="bg-slate-950/80 border border-slate-850 p-4 rounded-2xl text-left space-y-3">
-              <span className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Subscription Steps</span>
-              <div className="flex gap-3 text-xs">
-                <span className="w-5 h-5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center font-bold">1</span>
-                <p className="text-slate-300">Click the button below to visit our channel and click **Subscribe**.</p>
-              </div>
-              <div className="flex gap-3 text-xs">
-                <span className="w-5 h-5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center font-bold">2</span>
-                <p className="text-slate-300">Return here and click **Confirm Subscription & Unlock** to get full workspace access.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-2">
-              <a
-                href="https://www.youtube.com/@CodingYatrasoftware?sub_confirmation=1"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setClickedSub(true)}
-                className="w-full rounded-2xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white py-3.5 text-sm font-bold shadow-lg shadow-rose-600/20 active:scale-95 transition duration-200 flex items-center justify-center gap-2 animate-bounce-slow"
-              >
-                <span>📺</span> Subscribe to Coding Yatra
-              </a>
-
-              {clickedSub && (
-                <button
-                  type="button"
-                  onClick={handleConfirmUnlock}
-                  disabled={subLoading}
-                  className="w-full rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3.5 text-sm font-bold shadow-lg shadow-purple-600/20 hover:scale-[1.02] active:scale-95 transition duration-200 disabled:opacity-50"
-                >
-                  {subLoading ? 'Verifying subscription...' : '⚡ Confirm Subscription & Unlock'}
-                </button>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => logout()}
-              className="text-xs text-slate-500 hover:text-slate-450 transition font-bold"
-            >
-              Sign out of account
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col lg:flex-row">
-      {isAuthenticated ? (
-        <>
+      <>
           {/* Desktop Left Sidebar */}
           <aside className="hidden lg:block w-64 h-screen sticky top-0 bg-slate-950/80 border-r border-slate-800 p-6 z-40 backdrop-blur-md">
             {sidebarContent}
@@ -374,16 +275,7 @@ function MainLayout() {
               </Routes>
             </main>
           </div>
-        </>
-      ) : (
-        <main className="flex-1">
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </main>
-      )}
+      </>
 
       {/* Profile Editor Modal */}
       {isProfileModalOpen && (
