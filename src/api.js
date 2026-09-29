@@ -6,7 +6,8 @@ export const API_BASE = import.meta.env.PROD
 async function request(path, options = {}) {
   try {
     let response
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    const maxAttempts = 7
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       response = await fetch(`${API_BASE}${path}`, {
         credentials: 'include',
         ...options,
@@ -16,8 +17,9 @@ async function request(path, options = {}) {
         },
       })
 
-      if (![429, 502, 503, 504].includes(response.status) || attempt === 2) break
-      await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)))
+      if (![429, 502, 503, 504].includes(response.status) || attempt === maxAttempts - 1) break
+      const retryDelay = Math.min(2000 * (attempt + 1), 10000)
+      await new Promise((resolve) => setTimeout(resolve, retryDelay))
     }
 
     const body = await response.json().catch(() => null)

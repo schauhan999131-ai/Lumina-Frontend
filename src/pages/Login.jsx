@@ -26,11 +26,10 @@ export default function Login() {
       navigate('/')
     } catch (err) {
       const message = err.message || ''
-      setError(
-        message.includes('backend is waking up') || message.includes('Failed to connect to backend')
-          ? 'Unable to sign in right now. Please try again shortly.'
-          : message || 'Login failed. Please try again.'
-      )
+      const backendUnavailable = /backend is waking up|failed to connect to backend/i.test(message)
+      setError(backendUnavailable
+        ? 'The server is waking up after inactivity. Please wait a few seconds and try again. Your saved data is unchanged.'
+        : message || 'Login failed. Please try again.')
     } finally {
       setLoading(false)
     }
