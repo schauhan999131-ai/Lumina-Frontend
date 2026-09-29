@@ -4,6 +4,8 @@ import Dashboard from './pages/Dashboard'
 import Tasks from './pages/Tasks'
 import FocusTimer from './pages/FocusTimer'
 import StudyNotes from './pages/StudyNotes'
+import Login from './pages/Login'
+import Signup from './pages/Signup'
 import { useAppStore } from './store'
 import './App.css'
 
@@ -442,10 +444,43 @@ function MainLayout() {
   )
 }
 
+function AppRoutes() {
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated)
+  const checkAuth = useAppStore((state) => state.checkAuth)
+  const [authReady, setAuthReady] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    checkAuth().finally(() => {
+      if (mounted) setAuthReady(true)
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [checkAuth])
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-300 flex items-center justify-center">
+        Restoring your workspace...
+      </div>
+    )
+  }
+
+  return (
+    <Routes>
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/signup" element={isAuthenticated ? <Navigate to="/" replace /> : <Signup />} />
+      <Route path="/*" element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" replace />} />
+    </Routes>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <MainLayout />
+      <AppRoutes />
     </BrowserRouter>
   )
 }
