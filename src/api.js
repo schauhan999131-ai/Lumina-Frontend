@@ -41,26 +41,93 @@ async function request(path, options = {}) {
   }
 }
 
-// Auth API
-export const signup = (email, password, role = 'Staff', plan = 'Free') =>
-  request('/api/auth/signup', {
-    method: 'POST',
-    body: JSON.stringify({ email, password, role, plan }),
-  })
+// Auth API - Local, persistent client-side session for serverless usage.
+const AUTH_STORAGE_KEY = 'lumina_auth_session'
 
-export const login = (email, password) =>
-  request('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  })
+const readStoredAuthSession = () => {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch (error) {
+    console.error('Failed to read auth session:', error)
+    return null
+  }
+}
 
-export const logout = () =>
-  request('/api/auth/logout', {
-    method: 'POST',
-  })
+const writeStoredAuthSession = (user) => {
+  try {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
+  } catch (error) {
+    console.error('Failed to persist auth session:', error)
+  }
+}
 
-export const getCurrentUser = () =>
-  request('/api/auth/me')
+const clearStoredAuthSession = () => {
+  try {
+    localStorage.removeItem(AUTH_STORAGE_KEY)
+  } catch (error) {
+    console.error('Failed to clear auth session:', error)
+  }
+}
+
+const createLocalUser = (email, role = 'Staff', plan = 'Free') => {
+  const existing = readStoredAuthSession()
+  if (existing && existing.email?.toLowerCase() === String(email).toLowerCase()) {
+    return existing
+  }
+
+  const user = {
+    _id: existing?._id || `local_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    email: String(email).trim(),
+    role,
+    plan: plan || 'Free',
+    planStatus: 'Active',
+    profilePicture: '',
+    occupation: 'Developer',
+    isSubscribedYoutube: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+
+  writeStoredAuthSession(user)
+  return user
+}
+
+export const signup = async (email, password, role = 'Staff', plan = 'Free') => {
+  if (!email || !password) {
+    throw new Error('Email and password are required.')
+  }
+
+  const user = createLocalUser(email, role, plan)
+  return { user }
+}
+
+export const login = async (email, password) => {
+  if (!email || !password) {
+    throw new Error('Email and password are required.')
+  }
+
+  const existingUser = readStoredAuthSession()
+  const user = existingUser && existingUser.email?.toLowerCase() === String(email).toLowerCase()
+    ? existingUser
+    : createLocalUser(email, 'Staff', 'Free')
+
+  return { user }
+}
+
+export const logout = async () => {
+  clearStoredAuthSession()
+  return { message: 'Logged out successfully.' }
+}
+
+export const getCurrentUser = async () => {
+  const user = readStoredAuthSession()
+  if (!user) {
+    throw new Error('Not authenticated')
+  }
+
+  return { user }
+}
 
 // Tasks API
 export const fetchTasks = () =>
