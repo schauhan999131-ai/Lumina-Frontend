@@ -35,24 +35,14 @@ async function request(path, options = {}) {
   } catch (error) {
     // Better error messages
     if (error instanceof TypeError) {
-      throw new Error(`Failed to connect to backend at ${API_BASE}. Make sure backend is running.`)
+      throw new Error(`Failed to connect to backend at ${API_BASE}. Make sure backend is running.`, { cause: error })
     }
     throw error
   }
 }
 
-// Auth API - Local, persistent client-side session for serverless usage.
+// Auth API
 const AUTH_STORAGE_KEY = 'lumina_auth_session'
-
-const readStoredAuthSession = () => {
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch (error) {
-    console.error('Failed to read auth session:', error)
-    return null
-  }
-}
 
 const writeStoredAuthSession = (user) => {
   try {
@@ -70,35 +60,17 @@ const clearStoredAuthSession = () => {
   }
 }
 
-const createLocalUser = (email, role = 'Staff', plan = 'Free') => {
-  const existing = readStoredAuthSession()
-  if (existing && existing.email?.toLowerCase() === String(email).toLowerCase()) {
-    return existing
-  }
-
-  const user = {
-    _id: existing?._id || `local_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    email: String(email).trim(),
-    role,
-    plan: plan || 'Free',
-    planStatus: 'Active',
-    profilePicture: '',
-    occupation: 'Developer',
-    isSubscribedYoutube: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-
-  writeStoredAuthSession(user)
-  return user
-}
-
 export const signup = async (email, password, role = 'Staff', plan = 'Free') => {
   if (!email || !password) {
     throw new Error('Email and password are required.')
   }
 
-  const user = createLocalUser(email, role, plan)
+  const result = await request('/api/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, role, plan }),
+  })
+  const user = result.user
+  writeStoredAuthSession(user)
   return { user }
 }
 
@@ -107,26 +79,30 @@ export const login = async (email, password) => {
     throw new Error('Email and password are required.')
   }
 
-  const existingUser = readStoredAuthSession()
-  const user = existingUser && existingUser.email?.toLowerCase() === String(email).toLowerCase()
-    ? existingUser
-    : createLocalUser(email, 'Staff', 'Free')
-
+  const result = await request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+  const user = result.user
+  writeStoredAuthSession(user)
   return { user }
 }
 
 export const logout = async () => {
-  clearStoredAuthSession()
+  try {
+    await request('/api/auth/logout', { method: 'POST' })
+  } catch (error) {
+    console.warn('Could not clear server auth session:', error)
+  } finally {
+    clearStoredAuthSession()
+  }
   return { message: 'Logged out successfully.' }
 }
 
 export const getCurrentUser = async () => {
-  const user = readStoredAuthSession()
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
-
-  return { user }
+  const result = await request('/api/auth/me')
+  writeStoredAuthSession(result.user)
+  return result
 }
 
 // Tasks API
@@ -269,49 +245,192 @@ export const deleteNote = (noteId) =>
     method: 'DELETE',
   })
 
-// Vocabulary API - Direct npoint.io integration (No Render backend server needed!)
+// Vocabulary is stored in MongoDB and mirrored to npoint as a backup.
 export const NPOINT_VOCAB_URL =
   import.meta.env.VITE_NPOINT_VOCAB_URL || 'https://api.npoint.io/b3908c6fc2b575c85637'
 
-export const fetchVocab = async () => {
+const fetchNpointVocab = async () => {
   const response = await fetch(NPOINT_VOCAB_URL)
   if (!response.ok) {
     throw new Error(`Failed to fetch vocabulary from npoint: HTTP ${response.status}`)
   }
   const result = await response.json()
-  // npoint wraps the data in { "data": [ ... ] }
-  const words = Array.isArray(result) ? result : (result?.data || [])
-  return { data: words }
+  return Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : [])
+}
+
+const writeNpointVocab = async (words) => {
+  const response = await fetch(NPOINT_VOCAB_URL, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: words }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to save vocabulary to npoint: HTTP ${response.status}`)
+  }
+}
+
+const vocabKey = (word) => String(word?.word || word?._id || word?.id || '').trim().toLowerCase()
+let npointWriteQueue = Promise.resolve()
+
+const updateNpointVocab = (transform) => {
+  const operation = npointWriteQueue.then(async () => {
+    const current = await fetchNpointVocab()
+    const next = transform(current)
+    await writeNpointVocab(next)
+    return next
+  })
+  npointWriteQueue = operation.catch(() => {})
+  return operation
+}
+
+const mergeVocab = (...lists) => {
+  const merged = new Map()
+  lists.flat().forEach((word) => {
+    if (word?.word) merged.set(vocabKey(word), { ...(merged.get(vocabKey(word)) || {}), ...word })
+  })
+  return Array.from(merged.values())
+}
+
+export const fetchVocab = async () => {
+  let databaseError
+  try {
+    const databaseResult = await request('/api/vocab')
+    const databaseWords = databaseResult.data || []
+    try {
+      const backupWords = await fetchNpointVocab()
+      const combined = mergeVocab(backupWords, databaseWords)
+      const knownWords = new Set(databaseWords.map((word) => String(word.word).trim().toLowerCase()))
+      const missing = backupWords.filter((word) => word?.word && !knownWords.has(String(word.word).trim().toLowerCase()))
+      if (missing.length) {
+        const migrated = await request('/api/vocab', {
+          method: 'POST',
+          body: JSON.stringify(missing.map((word) => {
+            const payload = { ...word }
+            delete payload._id
+            delete payload.id
+            return payload
+          })),
+        })
+        const migratedWords = migrated.data || []
+        const synchronized = mergeVocab(backupWords, databaseWords, migratedWords)
+        await writeNpointVocab(synchronized)
+        return { data: synchronized }
+      }
+      await writeNpointVocab(combined)
+      return { data: combined }
+    } catch (backupError) {
+      console.warn('Could not read vocabulary backup from npoint:', backupError)
+      return { data: databaseWords }
+    }
+  } catch (error) {
+    databaseError = error
+  }
+
+  try {
+    return { data: await fetchNpointVocab() }
+  } catch (backupError) {
+    throw new Error(`Could not load vocabulary from MongoDB (${databaseError.message}) or npoint (${backupError.message}).`, { cause: backupError })
+  }
 }
 
 export const createVocab = async (vocabData) => {
-  const items = Array.isArray(vocabData) ? vocabData : [vocabData]
-  const formatted = items.map((item) => ({
-    _id: item._id || item.id || `vocab_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-    status: item.status || 'learning',
-    category: item.category || 'Coding Term',
-    difficulty: item.difficulty || 'Medium',
-    partOfSpeech: item.partOfSpeech || 'Noun',
-    example: item.example || '',
-    codeContext: item.codeContext || '',
-    mnemonic: item.mnemonic || '',
-    image: item.image || null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    ...item,
-  }))
-  return { data: Array.isArray(vocabData) ? formatted : formatted[0] }
+  const input = Array.isArray(vocabData) ? vocabData : [vocabData]
+  let created
+  let databaseError
+  let backupSaved = false
+  try {
+    const result = await request('/api/vocab', {
+      method: 'POST',
+      body: JSON.stringify(vocabData),
+    })
+    created = result.data || []
+  } catch (error) {
+    databaseError = error
+    created = input.map((item) => ({
+      ...item,
+      _id: item._id || item.id || `vocab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      status: item.status || 'learning',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  try {
+    await updateNpointVocab((existing) => mergeVocab(existing, created))
+    backupSaved = true
+  } catch (backupError) {
+    if (databaseError) throw new Error(`Could not save vocabulary to MongoDB (${databaseError.message}) or npoint (${backupError.message}).`, { cause: backupError })
+    console.warn('Vocabulary saved to MongoDB but npoint backup failed:', backupError)
+  }
+    if (databaseError) console.warn('Vocabulary saved to npoint, but MongoDB save failed:', databaseError)
+    return {
+      data: Array.isArray(vocabData) ? created : created[0],
+      databaseSaved: !databaseError,
+      backupSaved,
+    }
 }
 
 export const updateVocab = async (vocabId, updateData) => {
-  return { data: { _id: vocabId, ...updateData, updatedAt: new Date().toISOString() } }
+  let updated
+  let databaseError
+  try {
+    const result = await request(`/api/vocab/${encodeURIComponent(vocabId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updateData),
+    })
+    updated = result.data
+  } catch (error) {
+    databaseError = error
+    updated = { _id: vocabId, ...updateData, updatedAt: new Date().toISOString() }
+  }
+
+  try {
+    await updateNpointVocab((words) => words.map((word) =>
+      String(word._id || word.id) === String(vocabId)
+        ? { ...word, ...updateData, updatedAt: new Date().toISOString() }
+        : word
+    ))
+  } catch (backupError) {
+    if (databaseError) throw new Error(`Could not update vocabulary in MongoDB (${databaseError.message}) or npoint (${backupError.message}).`, { cause: backupError })
+    console.warn('Vocabulary updated in MongoDB but npoint backup failed:', backupError)
+  }
+  return { data: updated }
 }
 
 export const deleteVocab = async (vocabId) => {
+  let databaseError
+  try {
+    await request(`/api/vocab/${encodeURIComponent(vocabId)}`, { method: 'DELETE' })
+  } catch (error) {
+    databaseError = error
+  }
+  try {
+    await updateNpointVocab((words) => words.filter((word) =>
+      String(word._id || word.id) !== String(vocabId) && vocabKey(word) !== String(vocabId).toLowerCase()
+    ))
+  } catch (backupError) {
+    if (databaseError) throw new Error(`Could not delete vocabulary from MongoDB (${databaseError.message}) or npoint (${backupError.message}).`, { cause: backupError })
+    console.warn('Vocabulary deleted from MongoDB but npoint backup failed:', backupError)
+  }
   return { message: 'Word deleted successfully', id: vocabId }
 }
 
 export const resetAllVocabStatus = async (status = 'learning') => {
+  let databaseError
+  try {
+    await request('/api/vocab/batch/status', {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    })
+  } catch (error) {
+    databaseError = error
+  }
+  try {
+    await updateNpointVocab((words) => words.map((word) => ({ ...word, status })))
+  } catch (backupError) {
+    if (databaseError) throw new Error(`Could not reset vocabulary in MongoDB (${databaseError.message}) or npoint (${backupError.message}).`, { cause: backupError })
+    console.warn('Vocabulary reset in MongoDB but npoint backup failed:', backupError)
+  }
   return { message: `All words reset to ${status}` }
 }
 

@@ -566,6 +566,19 @@ export default function StudyNotes() {
           console.warn('Failed to fetch remote vocab seed, using saved vocab only:', error)
         }
 
+        const remoteWords = new Set(remoteVocab.map((word) => String(word.word || '').trim().toLowerCase()))
+        const localOnlyWords = savedVocab.filter((word) =>
+          word?.word && !remoteWords.has(String(word.word).trim().toLowerCase())
+        )
+        if (localOnlyWords.length > 0) {
+          try {
+            const migrated = await api.createVocab(localOnlyWords)
+            remoteVocab = [...remoteVocab, ...(Array.isArray(migrated.data) ? migrated.data : [migrated.data])]
+          } catch (error) {
+            console.warn('Could not migrate browser-cached vocabulary:', error)
+          }
+        }
+
         const seedVocab = remoteVocab.length > 0 ? remoteVocab : initialVocabulary
         let currentVocab = mergeVocabLists(seedVocab, savedVocab)
 
@@ -834,7 +847,11 @@ export default function StudyNotes() {
       setVocabCodeContext('')
       setVocabMnemonic('')
       setVocabImage(null)
-      setVocabMessage('Word added to vault!')
+      setVocabMessage(!res.databaseSaved
+        ? 'Saved to npoint only. MongoDB could not be reached; check your backend login and database.'
+        : !res.backupSaved
+          ? 'Saved to MongoDB, but the npoint backup could not be updated.'
+          : 'Word saved to MongoDB and npoint!')
     } catch (err) {
       console.error('Error creating vocab:', err)
       setVocabMessage('Failed to save word.')
@@ -896,7 +913,11 @@ export default function StudyNotes() {
         persistVocabList(nextList)
         return nextList
       })
-      setVocabMessage(`Successfully imported ${newItems.length} developer vocabulary words!`)
+      setVocabMessage(res.databaseSaved === false
+        ? `Imported ${newItems.length} words to npoint only; MongoDB save failed.`
+        : res.backupSaved === false
+          ? `Imported ${newItems.length} words to MongoDB, but npoint backup failed.`
+          : `Successfully imported ${newItems.length} developer vocabulary words to MongoDB and npoint!`)
     } catch (err) {
       console.error('Error importing developer pack:', err)
       setVocabMessage('Failed to import developer pack.')
