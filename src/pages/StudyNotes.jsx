@@ -519,45 +519,61 @@ export default function StudyNotes() {
     loadNotesAndMigrate()
   }, [])
 
+  const persistVocabList = (list) => {
+    try {
+      localStorage.setItem('lumina_vocab', JSON.stringify(list || []))
+    } catch (error) {
+      console.error('Error persisting vocab list:', error)
+    }
+  }
+
+  const readPersistedVocab = () => {
+    try {
+      const saved = localStorage.getItem('lumina_vocab')
+      if (!saved) return []
+      const parsed = JSON.parse(saved)
+      return Array.isArray(parsed) ? parsed : []
+    } catch (error) {
+      console.error('Error reading persisted vocab:', error)
+      return []
+    }
+  }
+
+  const mergeVocabLists = (baseWords = [], extraWords = []) => {
+    const merged = new Map()
+
+    ;[...baseWords, ...extraWords].forEach((word) => {
+      if (!word || !word.word) return
+      const key = (word._id || word.id || word.word).toString().trim().toLowerCase()
+      merged.set(key, { ...(merged.get(key) || {}), ...word })
+    })
+
+    return Array.from(merged.values())
+  }
+
   // Load vocabulary from database on mount, migrating localStorage if needed
   useEffect(() => {
     const loadVocab = async () => {
       setVocabLoading(true)
       try {
         const res = await api.fetchVocab()
-        let currentVocab = res.data || []
+        const remoteVocab = res.data || []
+        const savedVocab = readPersistedVocab()
+        let currentVocab = mergeVocabLists(remoteVocab, savedVocab)
 
-        // Migrate localStorage vocab to database
-        const localSaved = localStorage.getItem('lumina_vocab')
-        if (localSaved) {
-          try {
-            const localVocab = JSON.parse(localSaved)
-            if (localVocab && localVocab.length > 0) {
-              const existingWords = new Set(currentVocab.map(v => v.word.toLowerCase()))
-              const toMigrate = localVocab.filter(v => !existingWords.has(v.word.toLowerCase()))
-              if (toMigrate.length > 0) {
-                const migRes = await api.createVocab(toMigrate)
-                const migrated = migRes.data || []
-                currentVocab = [...migrated, ...currentVocab]
-              }
-            }
-          } catch (e) {
-            console.error('Error migrating local vocab:', e)
-          }
-          localStorage.removeItem('lumina_vocab')
-        }
-
-        // Seed with initial pack if database is empty
         if (currentVocab.length === 0) {
           const seedRes = await api.createVocab(initialVocabulary)
           currentVocab = seedRes.data || []
         }
 
+        persistVocabList(currentVocab)
         setVocabList(currentVocab)
       } catch (err) {
         console.error('Error loading vocab:', err)
-        // Fallback to initialVocabulary so UI is usable offline
-        setVocabList(initialVocabulary)
+        const savedVocab = readPersistedVocab()
+        const fallback = savedVocab.length > 0 ? savedVocab : initialVocabulary
+        persistVocabList(fallback)
+        setVocabList(fallback)
       } finally {
         setVocabLoading(false)
       }
@@ -801,7 +817,9 @@ export default function StudyNotes() {
 
     try {
       const res = await api.createVocab(newItem)
-      setVocabList([res.data, ...vocabList])
+      const nextList = [res.data, ...vocabList]
+      setVocabList(nextList)
+      persistVocabList(nextList)
       setVocabWord('')
       setVocabDefinition('')
       setVocabExample('')
@@ -817,7 +835,11 @@ export default function StudyNotes() {
   }
 
   const handleDeleteVocab = async (id) => {
-    setVocabList(prev => prev.filter(v => vocabId(v) !== id))
+    setVocabList(prev => {
+      const nextList = prev.filter(v => vocabId(v) !== id)
+      persistVocabList(nextList)
+      return nextList
+    })
     if (activeCardIndex >= learningWords.length - 1 && activeCardIndex > 0) {
       setActiveCardIndex(prev => Math.max(0, prev - 1))
       setIsCardFlipped(false)
@@ -836,7 +858,11 @@ export default function StudyNotes() {
     const word = vocabList.find(v => vocabId(v) === id)
     if (!word) return
     const newStatus = word.status === 'learning' ? 'mastered' : 'learning'
-    setVocabList(prev => prev.map(v => vocabId(v) === id ? { ...v, status: newStatus } : v))
+    setVocabList(prev => {
+      const nextList = prev.map(v => vocabId(v) === id ? { ...v, status: newStatus } : v)
+      persistVocabList(nextList)
+      return nextList
+    })
     try {
       await api.updateVocab(id, { status: newStatus })
     } catch (err) {
@@ -857,7 +883,11 @@ export default function StudyNotes() {
     try {
       const res = await api.createVocab(newItems)
       const created = res.data || []
-      setVocabList(prev => [...created, ...prev])
+      setVocabList(prev => {
+        const nextList = [...created, ...prev]
+        persistVocabList(nextList)
+        return nextList
+      })
       setVocabMessage(`Successfully imported ${newItems.length} developer vocabulary words!`)
     } catch (err) {
       console.error('Error importing developer pack:', err)
@@ -867,7 +897,11 @@ export default function StudyNotes() {
   }
 
   const resetAllMastered = async () => {
-    setVocabList(prev => prev.map(v => ({ ...v, status: 'learning' })))
+    setVocabList(prev => {
+      const nextList = prev.map(v => ({ ...v, status: 'learning' }))
+      persistVocabList(nextList)
+      return nextList
+    })
     setActiveCardIndex(0)
     setIsCardFlipped(false)
     try {
@@ -922,7 +956,11 @@ export default function StudyNotes() {
   }
 
   const saveEditing = async () => {
-    setVocabList(prev => prev.map(v => vocabId(v) === editingWordId ? { ...v, ...editFields } : v))
+    setVocabList(prev => {
+      const nextList = prev.map(v => vocabId(v) === editingWordId ? { ...v, ...editFields } : v)
+      persistVocabList(nextList)
+      return nextList
+    })
     setEditingWordId(null)
     try {
       await api.updateVocab(editingWordId, editFields)
