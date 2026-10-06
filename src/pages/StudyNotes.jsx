@@ -556,10 +556,18 @@ export default function StudyNotes() {
     const loadVocab = async () => {
       setVocabLoading(true)
       try {
-        const res = await api.fetchVocab()
-        const remoteVocab = res.data || []
         const savedVocab = readPersistedVocab()
-        let currentVocab = mergeVocabLists(remoteVocab, savedVocab)
+
+        let remoteVocab = []
+        try {
+          const res = await api.fetchVocab()
+          remoteVocab = res.data || []
+        } catch (error) {
+          console.warn('Failed to fetch remote vocab seed, using saved vocab only:', error)
+        }
+
+        const seedVocab = remoteVocab.length > 0 ? remoteVocab : initialVocabulary
+        let currentVocab = mergeVocabLists(seedVocab, savedVocab)
 
         if (currentVocab.length === 0) {
           const seedRes = await api.createVocab(initialVocabulary)
